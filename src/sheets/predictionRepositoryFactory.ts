@@ -1,5 +1,7 @@
 import { env } from "../config/env.js";
 import { GoogleSheetsPredictionRepository } from "./googleSheetsPredictionRepository.js";
+import { GoogleSheetsRankingRepository } from "./googleSheetsRankingRepository.js";
+import { GoogleSheetsResultRepository } from "./googleSheetsResultRepository.js";
 import { InMemoryGameRepository } from "./inMemoryGameRepository.js";
 import { InMemoryPredictionRepository } from "./inMemoryPredictionRepository.js";
 import { InMemoryRankingRepository } from "./inMemoryRankingRepository.js";
@@ -46,11 +48,15 @@ export function createGameRepository(): GameRepository {
 }
 
 export function createResultRepository(): ResultRepository {
-  // Google Sheets impl to be added in the next iteration
+  if (env.PERSISTENCE_PROVIDER === "google_sheets") {
+    return new GoogleSheetsResultRepository(googleSheetsConfig());
+  }
   return inMemoryResult;
 }
 
 export function createRankingRepository(): RankingRepository {
-  // Google Sheets impl to be added in the next iteration
+  if (env.PERSISTENCE_PROVIDER === "google_sheets") {
+    return new GoogleSheetsRankingRepository(googleSheetsConfig());
+  }
   return inMemoryRanking;
 }
