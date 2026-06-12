@@ -8,6 +8,7 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/main.js",
     "test": "tsx --test src/**/*.test.ts",
+    "bootstrap:sheets": "tsx src/sheets/bootstrapSheets.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "keywords": [],
@@ -16,6 +17,7 @@
   "dependencies": {
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
+    "googleapis": "^173.0.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {

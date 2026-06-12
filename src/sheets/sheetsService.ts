@@ -1,22 +1,13 @@
 import type { ParsedPrediction } from "../domain/prediction.js";
+import { createPredictionRepository } from "./predictionRepositoryFactory.js";
+import type { StoredPrediction } from "./types.js";
 
-type StoredPrediction = ParsedPrediction & {
-  participantId: string;
-  source: "whatsapp";
-  createdAt: string;
-};
-
-const inMemoryPredictions: StoredPrediction[] = [];
+const predictionRepository = createPredictionRepository();
 
 export async function savePrediction(participantId: string, prediction: ParsedPrediction): Promise<void> {
-  inMemoryPredictions.push({
-    ...prediction,
-    participantId,
-    source: "whatsapp",
-    createdAt: new Date().toISOString(),
-  });
+  await predictionRepository.savePrediction(participantId, prediction);
 }
 
 export async function listPredictions(): Promise<StoredPrediction[]> {
-  return inMemoryPredictions;
+  return predictionRepository.listPredictions();
 }
