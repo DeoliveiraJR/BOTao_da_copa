@@ -4,6 +4,7 @@ import { consolidateRanking, getRanking } from "./domain/rankingService.js";
 import { createResultRepository } from "./sheets/predictionRepositoryFactory.js";
 import { listPredictions } from "./sheets/sheetsService.js";
 import { whatsappRouter } from "./whatsapp/webhookRouter.js";
+import { twilioRouter } from "./whatsapp/twilioRouter.js";
 
 const app = express();
 const resultRepo = createResultRepository();
@@ -30,6 +31,7 @@ app.post("/ranking/consolidate", async (_req, res) => {
 });
 
 app.use("/whatsapp", whatsappRouter);
+app.use("/twilio", twilioRouter);
 
 app.get("/results", async (_req, res) => {
   const results = await resultRepo.listConfirmedResults();
