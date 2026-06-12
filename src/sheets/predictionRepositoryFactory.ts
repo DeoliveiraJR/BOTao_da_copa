@@ -1,31 +1,56 @@
 import { env } from "../config/env.js";
 import { GoogleSheetsPredictionRepository } from "./googleSheetsPredictionRepository.js";
+import { InMemoryGameRepository } from "./inMemoryGameRepository.js";
 import { InMemoryPredictionRepository } from "./inMemoryPredictionRepository.js";
-import type { PredictionRepository } from "./types.js";
+import { InMemoryRankingRepository } from "./inMemoryRankingRepository.js";
+import { InMemoryResultRepository } from "./inMemoryResultRepository.js";
+import type { GameRepository, PredictionRepository, RankingRepository, ResultRepository } from "./types.js";
 
-const inMemoryRepository = new InMemoryPredictionRepository();
+const inMemoryPrediction = new InMemoryPredictionRepository();
+const inMemoryGame = new InMemoryGameRepository();
+const inMemoryResult = new InMemoryResultRepository();
+const inMemoryRanking = new InMemoryRankingRepository();
 
-function getRequired(value: string | undefined, name: string): string {
+export function getRequired(value: string | undefined, name: string): string {
   if (!value) {
     throw new Error(`Missing required environment variable: ${name}`);
   }
   return value;
 }
 
-export function createPredictionRepository(): PredictionRepository {
-  if (env.PERSISTENCE_PROVIDER === "google_sheets") {
-    const privateKey = getRequired(
+function googleSheetsConfig() {
+  return {
+    spreadsheetId: getRequired(env.GOOGLE_SHEETS_SPREADSHEET_ID, "GOOGLE_SHEETS_SPREADSHEET_ID"),
+    serviceAccountEmail: getRequired(env.GOOGLE_SERVICE_ACCOUNT_EMAIL, "GOOGLE_SERVICE_ACCOUNT_EMAIL"),
+    serviceAccountPrivateKey: getRequired(
       env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY,
       "GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY",
-    ).replace(/\\n/g, "\n");
+    ).replace(/\\n/g, "\n"),
+  };
+}
 
+export function createPredictionRepository(): PredictionRepository {
+  if (env.PERSISTENCE_PROVIDER === "google_sheets") {
+    const base = googleSheetsConfig();
     return new GoogleSheetsPredictionRepository({
-      spreadsheetId: getRequired(env.GOOGLE_SHEETS_SPREADSHEET_ID, "GOOGLE_SHEETS_SPREADSHEET_ID"),
+      ...base,
       predictionsRange: env.GOOGLE_SHEETS_PREDICTIONS_RANGE,
-      serviceAccountEmail: getRequired(env.GOOGLE_SERVICE_ACCOUNT_EMAIL, "GOOGLE_SERVICE_ACCOUNT_EMAIL"),
-      serviceAccountPrivateKey: privateKey,
     });
   }
+  return inMemoryPrediction;
+}
 
-  return inMemoryRepository;
+export function createGameRepository(): GameRepository {
+  // Google Sheets impl to be added in the next iteration
+  return inMemoryGame;
+}
+
+export function createResultRepository(): ResultRepository {
+  // Google Sheets impl to be added in the next iteration
+  return inMemoryResult;
+}
+
+export function createRankingRepository(): RankingRepository {
+  // Google Sheets impl to be added in the next iteration
+  return inMemoryRanking;
 }

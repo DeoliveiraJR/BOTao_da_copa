@@ -16,4 +16,13 @@ export class InMemoryPredictionRepository implements PredictionRepository {
   async listPredictions(): Promise<StoredPrediction[]> {
     return [...this.predictions];
   }
+
+  async hasPrediction(participantId: string, homeTeam: string, awayTeam: string): Promise<boolean> {
+    return this.predictions.some(
+      (p) =>
+        p.participantId === participantId &&
+        p.homeTeam.toUpperCase() === homeTeam.toUpperCase() &&
+        p.awayTeam.toUpperCase() === awayTeam.toUpperCase(),
+    );
+  }
 }

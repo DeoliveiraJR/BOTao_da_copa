@@ -52,6 +52,16 @@ export class GoogleSheetsPredictionRepository implements PredictionRepository {
     });
   }
 
+  async hasPrediction(participantId: string, homeTeam: string, awayTeam: string): Promise<boolean> {
+    const predictions = await this.listPredictions();
+    return predictions.some(
+      (p) =>
+        p.participantId === participantId &&
+        p.homeTeam.toUpperCase() === homeTeam.toUpperCase() &&
+        p.awayTeam.toUpperCase() === awayTeam.toUpperCase(),
+    );
+  }
+
   async listPredictions(): Promise<StoredPrediction[]> {
     const sheets = await this.getClient();
 
