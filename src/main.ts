@@ -9,6 +9,7 @@ import { twilioRouter } from "./whatsapp/twilioRouter.js";
 const app = express();
 const resultRepo = createResultRepository();
 
+app.use(express.urlencoded({ extended: false }));
 app.use(express.json());
 
 app.get("/health", (_req, res) => {

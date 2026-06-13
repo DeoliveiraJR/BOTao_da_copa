@@ -258,6 +258,78 @@ O AGNO é o cérebro do agente que vai:
 - Listagem de jogos ✅
 
 **O que o AGNO vai adicionar:**
+
+---
+
+## PARTE 4 — Configurar Twilio WhatsApp Sandbox
+
+Use esta parte quando quiser sair do teste por curl/Postman e validar o fluxo real via WhatsApp.
+
+### 1. Criar conta e ativar Sandbox
+
+1. Acesse https://www.twilio.com/console/whatsapp/learn.
+2. Crie a conta Trial e entre no Console.
+3. Va em **Messaging -> Try it out -> Send a WhatsApp message**.
+4. No bloco do Sandbox, copie o codigo `join XXXXX`.
+5. No seu celular, envie esse codigo para o numero do Sandbox.
+6. Aguarde a confirmacao `You are all set!`.
+
+### 2. Preencher variaveis no .env
+
+No Console da Twilio, em **Account Dashboard**, copie:
+
+- `Account SID`
+- `Auth Token`
+
+No `.env`, preencha:
+
+```env
+TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+TWILIO_AUTH_TOKEN=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+TWILIO_WHATSAPP_NUMBER=+14155238886
+```
+
+### 3. Subir API e tunel publico
+
+Em um terminal:
+
+```bash
+npm run dev
+```
+
+Em outro terminal:
+
+```bash
+npx ngrok http 3000
+```
+
+Copie a URL HTTPS gerada pelo ngrok.
+
+### 4. Configurar o webhook no Twilio
+
+1. Abra a aba **Sandbox settings**.
+2. Em **When a message comes in**, configure:
+
+```text
+https://SEU_DOMINIO_NGROK/twilio/webhook
+```
+
+3. Metodo: `POST`.
+4. Salve.
+
+### 5. Testar no WhatsApp
+
+1. Envie uma mensagem como `BRA 3x0 ARG` para o numero do Sandbox.
+2. Resultado esperado:
+  - resposta no proprio WhatsApp com `Palpite registrado: BRA 3x0 ARG`
+  - novo registro na aba `Palpites` do Google Sheets
+
+### 6. Troubleshooting rapido
+
+- Se o WhatsApp responder `Configure your WhatsApp Sandbox's Inbound URL`, o webhook salvo no Twilio esta errado ou desatualizado.
+- Se o ngrok nao mostrar `POST /twilio/webhook`, a mensagem nao chegou na sua API.
+- Se houver `200 OK` no ngrok mas a resposta no WhatsApp for de erro, verifique o log do `npm run dev`.
+- Se reiniciar o ngrok, atualize a URL no Twilio porque o dominio muda no plano gratis.
 - Mensagens com personalidade e contexto
 - Análise inteligente dos dados antes/depois dos jogos
 - Respostas a perguntas abertas

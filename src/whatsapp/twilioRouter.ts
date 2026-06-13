@@ -11,7 +11,14 @@ export const twilioRouter = Router();
  */
 twilioRouter.post("/webhook", async (req, res) => {
   try {
-    const twilioPayload = req.body;
+    const twilioPayload = req.body ?? {};
+    if (typeof twilioPayload.From !== "string" || typeof twilioPayload.Body !== "string") {
+      const invalidPayloadResponse = formatTwilioResponse(
+        "Payload invalido recebido. Verifique o webhook do Twilio e tente novamente."
+      );
+      res.type("application/xml");
+      return res.send(invalidPayloadResponse);
+    }
 
     // Parse da mensagem
     const message = parseIncomingTwilioMessage(twilioPayload);

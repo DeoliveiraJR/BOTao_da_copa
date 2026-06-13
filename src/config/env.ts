@@ -12,6 +12,9 @@ const EnvSchema = z.object({
   GOOGLE_SHEETS_PREDICTIONS_RANGE: z.string().default("Palpites!A:G"),
   GOOGLE_SERVICE_ACCOUNT_EMAIL: z.string().optional(),
   GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY: z.string().optional(),
+  TWILIO_ACCOUNT_SID: z.string().optional(),
+  TWILIO_AUTH_TOKEN: z.string().optional(),
+  TWILIO_WHATSAPP_NUMBER: z.string().optional(),
 });
 
 export const env = EnvSchema.parse(process.env);

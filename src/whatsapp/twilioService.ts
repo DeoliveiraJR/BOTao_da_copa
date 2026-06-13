@@ -4,9 +4,9 @@
  */
 
 export type TwilioIncomingMessage = {
-  From: string; // format: whatsapp:+55XXXXXXXXXX
-  Body: string;
-  AccountSid: string;
+  From?: string; // format: whatsapp:+55XXXXXXXXXX
+  Body?: string;
+  AccountSid?: string;
 };
 
 export type InternalMessage = {
@@ -29,10 +29,10 @@ export function extractPhoneNumber(twilioFrom: string): string {
  * Converte mensagem Twilio para formato interno
  */
 export function parseIncomingTwilioMessage(payload: TwilioIncomingMessage): InternalMessage {
-  const phoneNumber = extractPhoneNumber(payload.From);
+  const phoneNumber = extractPhoneNumber(payload.From ?? "");
   return {
     participantId: phoneNumber,
-    text: payload.Body.trim(),
+    text: (payload.Body ?? "").trim(),
   };
 }
 

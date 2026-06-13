@@ -17,7 +17,7 @@ Entregar um bolao simples para grupos de WhatsApp, com automacao de palpites, at
 - Tom de mensagens: sarcasmo moderado, sem ofensa
 
 ## Estrutura de skills
-As skills ficam em .github/skills e funcionam como base de operacao e governanca do projeto.
+As skills do projeto funcionam como base de operacao e governanca. A fonte de verdade de cada fluxo e o respectivo SKILL.md, com checklist separada apenas quando a propria skill declarar esse arquivo de controle.
 
 - regulamento-bolao
 	- Regras oficiais, escopo, governanca e obrigacao de checklist viva
@@ -28,19 +28,18 @@ As skills ficam em .github/skills e funcionam como base de operacao e governanca
 - narracao-bolao
 	- Mensagens pre-jogo e pos-rodada com guardrails de linguagem
 
-Cada skill possui:
+Arquivos considerados oficiais por skill:
 - SKILL.md
-- CHECKLIST-OPERACIONAL.md
-- CHANGELOG.md
+- CHECKLIST-OPERACIONAL.md quando a skill referenciar esse arquivo explicitamente
 
 ## Governanca obrigatoria
 - Nenhuma consolidacao oficial deve ocorrer com checklist desatualizada.
-- Toda mudanca de regra deve atualizar SKILL.md e CHANGELOG.md correspondentes.
+- Toda mudanca de regra deve atualizar o SKILL.md correspondente e a checklist quando aplicavel.
 
 ## Proximo passo tecnico
-1. Integrar Google Sheets real em todas as entidades (palpites, resultados e ranking).
+1. Validar assinatura do webhook Twilio usando credenciais do provedor.
 2. Implementar jobs pre-jogo e pos-rodada.
-3. Conectar WhatsApp provider real (Twilio/Meta Cloud API).
+3. Evoluir do Sandbox para provedor de producao (Twilio Business ou Meta Cloud API).
 
 ## Como testar agora
 1. Instale dependencias:
@@ -57,6 +56,19 @@ Cada skill possui:
 	- `GET /health`
 	- `POST /whatsapp/webhook`
 	- `GET /predictions`
+
+### Teste via Twilio Sandbox
+- Preencha no `.env`:
+	- `TWILIO_ACCOUNT_SID`
+	- `TWILIO_AUTH_TOKEN`
+	- `TWILIO_WHATSAPP_NUMBER=+14155238886`
+- Suba a API com `npm run dev`.
+- Exponha a porta local com `npx ngrok http 3000`.
+- No painel do Twilio Sandbox, configure `When a message comes in` com `https://SEU_DOMINIO_NGROK/twilio/webhook` usando metodo `POST`.
+- Envie um palpite para o numero do Sandbox.
+- Resultado esperado:
+	- resposta no WhatsApp com confirmacao do palpite
+	- nova linha na aba `Palpites` da planilha
 
 ### Exemplo de teste manual
 - Requisicao:
@@ -86,5 +98,6 @@ Cada skill possui:
 - [x] Backend TypeScript inicial com webhook e parser de palpites
 - [x] Regra de pontuacao 3/1/0 com testes de dominio
 - [x] Persistencia configuravel (in_memory e Google Sheets para palpites)
+- [x] Twilio WhatsApp Sandbox integrado e validado ponta a ponta
 - [ ] Jobs automaticos pre/pos-rodada
 - [ ] Integracao AGNO em runtime
