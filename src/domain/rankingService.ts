@@ -30,9 +30,9 @@ export async function consolidateRanking(): Promise<RankingConsolidationResult> 
     const actual = { home: result.homeGoalsManual, away: result.awayGoalsManual };
 
     for (const prediction of predictions) {
-      // Match prediction to result by team names encoded in gameId (homeTeam-awayTeam)
-      const expectedId = `${prediction.homeTeam.toUpperCase()}-${prediction.awayTeam.toUpperCase()}`;
+      const expectedId = prediction.gameId.toUpperCase();
       if (result.gameId.toUpperCase() !== expectedId) continue;
+      if (prediction.isDeleted) continue;
 
       const { points } = calculateBolaoPoints(
         { home: prediction.homeGoals, away: prediction.awayGoals },

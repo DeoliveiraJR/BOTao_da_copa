@@ -9,7 +9,7 @@ const EnvSchema = z.object({
   TIMEZONE: z.string().default("America/Sao_Paulo"),
   PERSISTENCE_PROVIDER: z.enum(["in_memory", "google_sheets"]).default("in_memory"),
   GOOGLE_SHEETS_SPREADSHEET_ID: z.string().optional(),
-  GOOGLE_SHEETS_PREDICTIONS_RANGE: z.string().default("Palpites!A:G"),
+  GOOGLE_SHEETS_PREDICTIONS_RANGE: z.string().default("Palpites!A:J"),
   GOOGLE_SERVICE_ACCOUNT_EMAIL: z.string().optional(),
   GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY: z.string().optional(),
   TWILIO_ACCOUNT_SID: z.string().optional(),

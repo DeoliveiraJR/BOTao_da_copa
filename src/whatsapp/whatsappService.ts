@@ -42,7 +42,10 @@ async function handlePrediction(participantId: string, text: string): Promise<st
     return `Prazo encerrado! ${parsed.homeTeam} x ${parsed.awayTeam} ja ${verb}.`;
   }
 
-  await predictionRepo.savePrediction(participantId, parsed);
+  await predictionRepo.savePrediction(participantId, {
+    ...parsed,
+    gameId: game?.id,
+  });
   return `Palpite registrado: ${parsed.homeTeam} ${parsed.homeGoals}x${parsed.awayGoals} ${parsed.awayTeam}`;
 }
 

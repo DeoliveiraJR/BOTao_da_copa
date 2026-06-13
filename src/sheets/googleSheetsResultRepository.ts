@@ -8,8 +8,8 @@ type GoogleSheetsConfig = {
 };
 
 const GOOGLE_SCOPES = ["https://www.googleapis.com/auth/spreadsheets"];
-// columns: id_jogo | gols_casa_api | gols_fora_api | gols_casa_manual | gols_fora_manual | status_reconciliacao | updated_at
-const RANGE = "Resultados!A:G";
+// columns: id_jogo | gols_casa_api | gols_fora_api | gols_casa_manual | gols_fora_manual | status_reconciliacao | resultado_oficial | updated_at
+const RANGE = "Resultados!A:H";
 
 type RowEntry = { rowIndex: number; data: StoredResult };
 
@@ -57,7 +57,8 @@ export class GoogleSheetsResultRepository implements ResultRepository {
             homeGoalsManual: parseNull(row[3]),
             awayGoalsManual: parseNull(row[4]),
             reconciliationStatus: (String(row[5] ?? "pending")) as ReconciliationStatus,
-            updatedAt: String(row[6] ?? ""),
+            officialResult: String(row[6] ?? "manual") === "api" ? "api" : "manual",
+            updatedAt: String(row[7] ?? ""),
           },
         };
       })
@@ -74,6 +75,7 @@ export class GoogleSheetsResultRepository implements ResultRepository {
       result.homeGoalsManual ?? "",
       result.awayGoalsManual ?? "",
       result.reconciliationStatus,
+      result.officialResult,
       updatedAt,
     ];
 
@@ -83,7 +85,7 @@ export class GoogleSheetsResultRepository implements ResultRepository {
     if (found) {
       await sheets.spreadsheets.values.update({
         spreadsheetId: this.config.spreadsheetId,
-        range: `Resultados!A${found.rowIndex}:G${found.rowIndex}`,
+        range: `Resultados!A${found.rowIndex}:H${found.rowIndex}`,
         valueInputOption: "USER_ENTERED",
         requestBody: { values: [row] },
       });

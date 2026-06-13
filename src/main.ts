@@ -52,6 +52,7 @@ app.post("/results", async (req, res) => {
     homeGoalsManual: Number(homeGoalsManual),
     awayGoalsManual: Number(awayGoalsManual),
     reconciliationStatus,
+    officialResult: "manual",
   });
   return res.status(201).json({ ok: true, gameId });
 });

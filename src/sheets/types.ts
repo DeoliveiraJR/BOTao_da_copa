@@ -3,9 +3,14 @@ import type { ParsedPrediction } from "../domain/prediction.js";
 // ── Palpites ──────────────────────────────────────────────────────────────────
 
 export type StoredPrediction = ParsedPrediction & {
+  predictionId: string;
   participantId: string;
-  source: "whatsapp";
+  gameId: string;
+  channel: "whatsapp" | "streamlit";
   createdAt: string;
+  updatedAt: string;
+  isDeleted: boolean;
+  deletedAt: string | null;
 };
 
 export interface PredictionRepository {
@@ -47,6 +52,7 @@ export type StoredResult = {
   homeGoalsManual: number | null;
   awayGoalsManual: number | null;
   reconciliationStatus: ReconciliationStatus;
+  officialResult: "api" | "manual";
   updatedAt: string;
 };
 

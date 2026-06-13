@@ -5,11 +5,18 @@ export class InMemoryPredictionRepository implements PredictionRepository {
   private readonly predictions: StoredPrediction[] = [];
 
   async savePrediction(participantId: string, prediction: ParsedPrediction): Promise<void> {
+    const now = new Date().toISOString();
+    const gameId = prediction.gameId ?? `${prediction.homeTeam.toUpperCase()}-${prediction.awayTeam.toUpperCase()}`;
     this.predictions.push({
       ...prediction,
+      predictionId: `pred-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       participantId,
-      source: "whatsapp",
-      createdAt: new Date().toISOString(),
+      gameId,
+      channel: "whatsapp",
+      createdAt: now,
+      updatedAt: now,
+      isDeleted: false,
+      deletedAt: null,
     });
   }
 
@@ -21,6 +28,7 @@ export class InMemoryPredictionRepository implements PredictionRepository {
     return this.predictions.some(
       (p) =>
         p.participantId === participantId &&
+        !p.isDeleted &&
         p.homeTeam.toUpperCase() === homeTeam.toUpperCase() &&
         p.awayTeam.toUpperCase() === awayTeam.toUpperCase(),
     );

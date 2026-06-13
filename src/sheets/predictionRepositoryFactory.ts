@@ -1,4 +1,5 @@
 import { env } from "../config/env.js";
+import { GoogleSheetsGameRepository } from "./googleSheetsGameRepository.js";
 import { GoogleSheetsPredictionRepository } from "./googleSheetsPredictionRepository.js";
 import { GoogleSheetsRankingRepository } from "./googleSheetsRankingRepository.js";
 import { GoogleSheetsResultRepository } from "./googleSheetsResultRepository.js";
@@ -43,7 +44,9 @@ export function createPredictionRepository(): PredictionRepository {
 }
 
 export function createGameRepository(): GameRepository {
-  // Google Sheets impl to be added in the next iteration
+  if (env.PERSISTENCE_PROVIDER === "google_sheets") {
+    return new GoogleSheetsGameRepository(googleSheetsConfig());
+  }
   return inMemoryGame;
 }
 

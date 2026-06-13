@@ -8,13 +8,16 @@ type SheetDefinition = {
 
 const SHEETS: SheetDefinition[] = [
   { title: "Regulamento", header: ["chave", "valor", "updated_at"] },
-  { title: "Participantes", header: ["id_usuario", "nome", "status", "created_at"] },
+  { title: "Participantes", header: ["id_usuario", "nome", "whatsapp_e164", "status", "created_at"] },
   {
     title: "Jogos",
     header: [
       "id_jogo",
-      "rodada",
-      "data_hora",
+      "fase",
+      "grupo",
+      "data_brt",
+      "hora_brt",
+      "data_hora_iso",
       "time_casa",
       "time_fora",
       "status",
@@ -25,13 +28,16 @@ const SHEETS: SheetDefinition[] = [
   {
     title: "Palpites",
     header: [
-      "created_at",
+      "id_palpite",
       "id_usuario",
-      "time_casa",
+      "id_jogo",
       "gols_casa",
       "gols_fora",
-      "time_fora",
-      "source",
+      "canal",
+      "created_at",
+      "updated_at",
+      "is_deleted",
+      "deleted_at",
     ],
   },
   {
@@ -43,6 +49,7 @@ const SHEETS: SheetDefinition[] = [
       "gols_casa_manual",
       "gols_fora_manual",
       "status_reconciliacao",
+      "resultado_oficial",
       "updated_at",
     ],
   },

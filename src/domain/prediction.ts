@@ -1,4 +1,5 @@
 export type ParsedPrediction = {
+  gameId?: string;
   homeTeam: string;
   awayTeam: string;
   homeGoals: number;
