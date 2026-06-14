@@ -5,6 +5,7 @@ import { detectIntent } from "./whatsappService.js";
 test("detects prediction intent", () => {
   assert.equal(detectIntent("BRA 2x1 ARG"), "prediction");
   assert.equal(detectIntent("bra 0-0 mex"), "prediction");
+  assert.equal(detectIntent("Mexico 2x1 Africa do Sul"), "prediction");
 });
 
 test("detects ranking intent", () => {

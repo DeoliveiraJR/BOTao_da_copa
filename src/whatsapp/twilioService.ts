@@ -10,7 +10,7 @@ export type TwilioIncomingMessage = {
 };
 
 export type InternalMessage = {
-  participantId: string;
+  phoneNumber: string;
   text: string;
 };
 
@@ -31,7 +31,7 @@ export function extractPhoneNumber(twilioFrom: string): string {
 export function parseIncomingTwilioMessage(payload: TwilioIncomingMessage): InternalMessage {
   const phoneNumber = extractPhoneNumber(payload.From ?? "");
   return {
-    participantId: phoneNumber,
+    phoneNumber,
     text: (payload.Body ?? "").trim(),
   };
 }

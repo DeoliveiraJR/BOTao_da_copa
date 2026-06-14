@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { processWhatsAppMessage } from "./whatsappService.js";
+import { resolveParticipantByWhatsapp } from "./participantResolver.js";
 import { formatTwilioResponse, parseIncomingTwilioMessage } from "./twilioService.js";
 
 export const twilioRouter = Router();
@@ -23,8 +24,20 @@ twilioRouter.post("/webhook", async (req, res) => {
     // Parse da mensagem
     const message = parseIncomingTwilioMessage(twilioPayload);
 
+    const participant = await resolveParticipantByWhatsapp(message.phoneNumber);
+    if (!participant) {
+      const notRegisteredResponse = formatTwilioResponse(
+        "Seu numero nao esta cadastrado neste bolao. Fale com o administrador para vincular seu WhatsApp antes de enviar palpites."
+      );
+      res.type("application/xml");
+      return res.send(notRegisteredResponse);
+    }
+
     // Processa com lógica existente
-    const reply = await processWhatsAppMessage(message);
+    const reply = await processWhatsAppMessage({
+      participantId: participant.participantId,
+      text: message.text,
+    });
 
     // Formata resposta em XML TwiML para Twilio
     const twiml = formatTwilioResponse(reply);

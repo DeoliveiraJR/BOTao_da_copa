@@ -10,6 +10,15 @@ type GoogleSheetsConfig = {
 const GOOGLE_SCOPES = ["https://www.googleapis.com/auth/spreadsheets"];
 const RANGE = "Jogos!A:J";
 
+function normalizeTeamName(value: string): string {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toUpperCase();
+}
+
 function normalizeStatus(value: string): GameStatus {
   const v = value.toLowerCase();
   if (v === "in_progress") return "in_progress";
@@ -116,8 +125,8 @@ export class GoogleSheetsGameRepository implements GameRepository {
     return (
       games.find(
         (g) =>
-          g.homeTeam.toUpperCase() === homeTeam.toUpperCase() &&
-          g.awayTeam.toUpperCase() === awayTeam.toUpperCase(),
+          normalizeTeamName(g.homeTeam) === normalizeTeamName(homeTeam) &&
+          normalizeTeamName(g.awayTeam) === normalizeTeamName(awayTeam),
       ) ?? null
     );
   }

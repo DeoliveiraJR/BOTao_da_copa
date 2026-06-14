@@ -25,7 +25,12 @@ export function detectIntent(text: string): Intent {
 
 async function handlePrediction(participantId: string, text: string): Promise<string> {
   const parsed = parsePredictionText(text);
-  if (!parsed) return "Formato invalido. Use: BRA 2x1 ARG";
+  if (!parsed) return "Formato invalido. Use os nomes oficiais do confronto, por exemplo: Mexico 2x1 Africa do Sul";
+
+  const game = await gameRepo.findGame(parsed.homeTeam, parsed.awayTeam);
+  if (!game) {
+    return `Jogo nao encontrado na tabela oficial: ${parsed.homeTeam} x ${parsed.awayTeam}. Digite jogos para consultar os confrontos validos.`;
+  }
 
   const alreadyExists = await predictionRepo.hasPrediction(
     participantId,
@@ -36,7 +41,6 @@ async function handlePrediction(participantId: string, text: string): Promise<st
     return `Voce ja tem palpite para ${parsed.homeTeam} x ${parsed.awayTeam}. Aguarde o resultado!`;
   }
 
-  const game = await gameRepo.findGame(parsed.homeTeam, parsed.awayTeam);
   if (game && (game.status === "in_progress" || game.status === "finished")) {
     const verb = game.status === "finished" ? "terminou" : "comecou";
     return `Prazo encerrado! ${parsed.homeTeam} x ${parsed.awayTeam} ja ${verb}.`;
@@ -69,7 +73,7 @@ async function handleGames(): Promise<string> {
 function handleHelp(): string {
   return [
     "Comandos:",
-    "  BRA 2x1 ARG  - Registrar palpite",
+    "  Mexico 2x1 Africa do Sul  - Registrar palpite",
     "  ranking      - Ver classificacao",
     "  jogos        - Ver proximos jogos",
     "  ajuda        - Ver esta mensagem",

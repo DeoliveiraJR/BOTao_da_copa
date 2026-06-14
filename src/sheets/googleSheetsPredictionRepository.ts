@@ -11,6 +11,12 @@ type GoogleSheetsConfig = {
 
 const GOOGLE_SCOPES = ["https://www.googleapis.com/auth/spreadsheets"];
 
+type GameDirectoryEntry = {
+  id: string;
+  homeTeam: string;
+  awayTeam: string;
+};
+
 function buildPredictionId(): string {
   return `pred-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -32,6 +38,15 @@ function isIsoDate(value: unknown): boolean {
   return !Number.isNaN(d.getTime());
 }
 
+function normalizeTeamName(value: string): string {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toUpperCase();
+}
+
 export class GoogleSheetsPredictionRepository implements PredictionRepository {
   private readonly config: GoogleSheetsConfig;
 
@@ -47,6 +62,31 @@ export class GoogleSheetsPredictionRepository implements PredictionRepository {
     });
 
     return google.sheets({ version: "v4", auth });
+  }
+
+  private async loadGamesDirectory() {
+    const sheets = await this.getClient();
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId: this.config.spreadsheetId,
+      range: "Jogos!A:H",
+    });
+
+    const rows = response.data.values ?? [];
+    const byId = new Map<string, GameDirectoryEntry>();
+    const byTeams = new Map<string, GameDirectoryEntry>();
+
+    for (const row of rows.slice(1)) {
+      const entry = {
+        id: String(row[0] ?? "").trim(),
+        homeTeam: String(row[6] ?? "").trim(),
+        awayTeam: String(row[7] ?? "").trim(),
+      };
+      if (!entry.id || !entry.homeTeam || !entry.awayTeam) continue;
+      byId.set(entry.id, entry);
+      byTeams.set(`${normalizeTeamName(entry.homeTeam)}::${normalizeTeamName(entry.awayTeam)}`, entry);
+    }
+
+    return { byId, byTeams };
   }
 
   async savePrediction(participantId: string, prediction: ParsedPrediction): Promise<void> {
@@ -78,22 +118,25 @@ export class GoogleSheetsPredictionRepository implements PredictionRepository {
   }
 
   async hasPrediction(participantId: string, homeTeam: string, awayTeam: string): Promise<boolean> {
+    const games = await this.loadGamesDirectory();
     const predictions = await this.listPredictions();
-    const expectedGameId = `${homeTeam.toUpperCase()}-${awayTeam.toUpperCase()}`;
+    const expectedGame = games.byTeams.get(`${normalizeTeamName(homeTeam)}::${normalizeTeamName(awayTeam)}`);
+    const expectedGameId = expectedGame?.id ?? `${homeTeam.toUpperCase()}-${awayTeam.toUpperCase()}`;
     return predictions.some(
       (p) =>
         p.participantId === participantId &&
         !p.isDeleted &&
         (
-          p.gameId.toUpperCase() === expectedGameId ||
-          (p.homeTeam.toUpperCase() === homeTeam.toUpperCase() &&
-            p.awayTeam.toUpperCase() === awayTeam.toUpperCase())
+          p.gameId.toUpperCase() === expectedGameId.toUpperCase() ||
+          (normalizeTeamName(p.homeTeam) === normalizeTeamName(homeTeam) &&
+            normalizeTeamName(p.awayTeam) === normalizeTeamName(awayTeam))
         ),
     );
   }
 
   async listPredictions(): Promise<StoredPrediction[]> {
     const sheets = await this.getClient();
+    const games = await this.loadGamesDirectory();
 
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId: this.config.spreadsheetId,
@@ -145,7 +188,10 @@ export class GoogleSheetsPredictionRepository implements PredictionRepository {
           const awayGoals = Number(row[idxAwayGoals] ?? NaN);
           if (!predictionId || !participantId || !gameId || Number.isNaN(homeGoals) || Number.isNaN(awayGoals)) return null;
 
-          const [homeTeam = "UNK", awayTeam = "UNK"] = gameId.toUpperCase().split("-");
+          const gameEntry = games.byId.get(gameId);
+          const [fallbackHomeTeam = "UNK", fallbackAwayTeam = "UNK"] = gameId.toUpperCase().split("-");
+          const homeTeam = gameEntry?.homeTeam ?? fallbackHomeTeam;
+          const awayTeam = gameEntry?.awayTeam ?? fallbackAwayTeam;
           return {
             predictionId,
             participantId,
