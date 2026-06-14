@@ -28,6 +28,25 @@ test("detects help intent", () => {
   assert.equal(detectIntent("?"), "help");
 });
 
+test("detects oi intent", () => {
+  assert.equal(detectIntent("oi"), "oi");
+  assert.equal(detectIntent("olá"), "oi");
+  assert.equal(detectIntent("Bom dia"), "oi");
+  assert.equal(detectIntent("start"), "oi");
+});
+
+test("detects panel intent", () => {
+  assert.equal(detectIntent("painel"), "panel");
+  assert.equal(detectIntent("dashboard"), "panel");
+  assert.equal(detectIntent("link"), "panel");
+});
+
+test("detects resumo intent", () => {
+  assert.equal(detectIntent("resumo"), "resumo");
+  assert.equal(detectIntent("Resumo da Rodada"), "resumo");
+  assert.equal(detectIntent("sintese"), "resumo");
+});
+
 test("returns unknown for unrecognized input", () => {
   assert.equal(detectIntent("oi tudo bem"), "unknown");
   assert.equal(detectIntent("qual o placar"), "unknown");

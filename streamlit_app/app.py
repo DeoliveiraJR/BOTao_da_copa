@@ -1,23 +1,41 @@
 from __future__ import annotations
 
 from datetime import datetime
+import os
 from typing import Any
 
 import pandas as pd
 import requests
 import streamlit as st
 
-st.set_page_config(page_title="BOTao da Copa - Painel", page_icon="soccer", layout="wide")
+st.set_page_config(page_title="BOTao da Copa - Painel", page_icon="⚽", layout="wide")
+
+
+def default_api_base_url() -> str:
+    # Priority: Streamlit secrets > environment variable > localhost fallback.
+    if "API_BASE_URL" in st.secrets:
+        return str(st.secrets["API_BASE_URL"]).rstrip("/")
+    return os.getenv("API_BASE_URL", "http://localhost:3000").rstrip("/")
 
 st.title("BOTao da Copa - Painel Operacional")
 st.caption("MVP de operacao: ranking, palpites, resultados e resumo")
 
 with st.sidebar:
     st.header("Conexao API")
-    default_url = st.session_state.get("api_base_url", "http://localhost:3000")
+    default_url = st.session_state.get("api_base_url", default_api_base_url())
     api_base_url = st.text_input("Base URL", value=default_url).rstrip("/")
     st.session_state["api_base_url"] = api_base_url
     timeout_seconds = st.slider("Timeout (segundos)", min_value=2, max_value=30, value=8)
+
+    st.caption("Dica deploy: configure API_BASE_URL em Secrets no Streamlit Cloud.")
+
+    if st.button("Testar conexao", use_container_width=True):
+        try:
+            health = requests.get(f"{api_base_url}/health", timeout=timeout_seconds)
+            health.raise_for_status()
+            st.success("API conectada com sucesso.")
+        except Exception as exc:  # noqa: BLE001
+            st.error(f"Falha na conexao: {exc}")
 
 
 def api_get(path: str) -> dict[str, Any]:

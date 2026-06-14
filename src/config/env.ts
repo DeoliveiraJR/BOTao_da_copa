@@ -15,6 +15,7 @@ const EnvSchema = z.object({
   TWILIO_ACCOUNT_SID: z.string().optional(),
   TWILIO_AUTH_TOKEN: z.string().optional(),
   TWILIO_WHATSAPP_NUMBER: z.string().optional(),
+  STREAMLIT_URL: z.string().default("https://botao-copa-2026.streamlit.app"),
 });
 
 export const env = EnvSchema.parse(process.env);
