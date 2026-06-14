@@ -1,4 +1,6 @@
 import { calculateBolaoPoints } from "../domain/scoring.js";
+import { env } from "../config/env.js";
+import { google } from "googleapis";
 import {
   createPredictionRepository,
   createRankingRepository,
@@ -10,6 +12,36 @@ const predictionRepo = createPredictionRepository();
 const resultRepo = createResultRepository();
 const rankingRepo = createRankingRepository();
 
+const GOOGLE_SCOPES = ["https://www.googleapis.com/auth/spreadsheets"];
+
+async function loadParticipantNames(): Promise<Map<string, string>> {
+  if (env.PERSISTENCE_PROVIDER !== "google_sheets") return new Map();
+  if (!env.GOOGLE_SHEETS_SPREADSHEET_ID || !env.GOOGLE_SERVICE_ACCOUNT_EMAIL || !env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY) {
+    return new Map();
+  }
+
+  const auth = new google.auth.JWT({
+    email: env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
+    key: env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY.replace(/\\n/g, "\n"),
+    scopes: GOOGLE_SCOPES,
+  });
+  const sheets = google.sheets({ version: "v4", auth });
+  const response = await sheets.spreadsheets.values.get({
+    spreadsheetId: env.GOOGLE_SHEETS_SPREADSHEET_ID,
+    range: "Participantes!A:B",
+  });
+
+  const rows = response.data.values ?? [];
+  const map = new Map<string, string>();
+  for (const row of rows.slice(1)) {
+    const id = String(row[0] ?? "").trim();
+    const name = String(row[1] ?? "").trim();
+    if (!id) continue;
+    map.set(id, name || id);
+  }
+  return map;
+}
+
 export type RankingConsolidationResult = {
   processed: number;
   ranking: RankingEntry[];
@@ -20,6 +52,7 @@ export async function consolidateRanking(): Promise<RankingConsolidationResult> 
     predictionRepo.listPredictions(),
     resultRepo.listConfirmedResults(),
   ]);
+  const participantNames = await loadParticipantNames();
 
   // Accumulate points per participant across all confirmed results
   const pointsMap = new Map<string, number>();
@@ -47,8 +80,15 @@ export async function consolidateRanking(): Promise<RankingConsolidationResult> 
   }
 
   // Persist updated totals
+  for (const participantId of participantNames.keys()) {
+    if (!pointsMap.has(participantId)) {
+      pointsMap.set(participantId, 0);
+    }
+  }
+
   for (const [participantId, totalPoints] of pointsMap.entries()) {
-    await rankingRepo.upsertEntry({ participantId, name: participantId, totalPoints });
+    const name = participantNames.get(participantId) ?? participantId;
+    await rankingRepo.upsertEntry({ participantId, name, totalPoints });
   }
 
   const ranking = await rankingRepo.listRanking();

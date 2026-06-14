@@ -330,6 +330,62 @@ https://SEU_DOMINIO_NGROK/twilio/webhook
 - Se o ngrok nao mostrar `POST /twilio/webhook`, a mensagem nao chegou na sua API.
 - Se houver `200 OK` no ngrok mas a resposta no WhatsApp for de erro, verifique o log do `npm run dev`.
 - Se reiniciar o ngrok, atualize a URL no Twilio porque o dominio muda no plano gratis.
+
+---
+
+## PARTE 5 — Painel Streamlit (MVP Operacional)
+
+Use esta parte para operar o bolao com um painel simples enquanto o WhatsApp segue como canal principal dos participantes.
+
+### 1. Instalar dependencias do painel
+
+No diretorio do projeto:
+
+```bash
+cd BOTao_da_copa
+python -m venv .venv
+source .venv/Scripts/activate
+pip install -r streamlit_app/requirements.txt
+```
+
+### 2. Garantir API no ar
+
+Em um terminal:
+
+```bash
+npm run dev
+```
+
+### 3. Rodar Streamlit
+
+Em outro terminal:
+
+```bash
+source .venv/Scripts/activate
+streamlit run streamlit_app/app.py
+```
+
+### 4. Telas entregues no MVP
+
+- Ranking (com botao de consolidacao)
+- Palpites (com filtros por participante e jogo)
+- Resultados (form para salvar/atualizar)
+- Resumo da rodada (texto pronto para publicar no grupo)
+
+### 5. Endpoints usados pelo painel
+
+- `GET /ranking`
+- `POST /ranking/consolidate`
+- `GET /predictions`
+- `GET /results`
+- `POST /results`
+
+### 6. Fluxo operacional recomendado
+
+1. Receber palpites no WhatsApp.
+2. Lançar ou ajustar resultados na tela Resultados.
+3. Consolidar ranking.
+4. Copiar resumo da rodada e publicar no grupo.
 - Mensagens com personalidade e contexto
 - Análise inteligente dos dados antes/depois dos jogos
 - Respostas a perguntas abertas

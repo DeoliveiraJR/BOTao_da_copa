@@ -83,8 +83,34 @@ export class GoogleSheetsRankingRepository implements RankingRepository {
 
   async listRanking(): Promise<RankingEntry[]> {
     const rows = await this.getAllRows();
-    return rows
+    const sorted = rows
       .sort((a, b) => b.data.totalPoints - a.data.totalPoints)
       .map((r, index) => ({ ...r.data, position: index + 1 }));
+
+    // Keep the sheet itself consistent with the API output: ordered and with position.
+    const sheets = await this.getClient();
+    await sheets.spreadsheets.values.clear({
+      spreadsheetId: this.config.spreadsheetId,
+      range: "Ranking!A2:E",
+    });
+
+    if (sorted.length > 0) {
+      await sheets.spreadsheets.values.update({
+        spreadsheetId: this.config.spreadsheetId,
+        range: "Ranking!A2",
+        valueInputOption: "USER_ENTERED",
+        requestBody: {
+          values: sorted.map((entry) => [
+            entry.position,
+            entry.participantId,
+            entry.name,
+            entry.totalPoints,
+            entry.updatedAt,
+          ]),
+        },
+      });
+    }
+
+    return sorted;
   }
 }
