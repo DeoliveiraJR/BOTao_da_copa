@@ -15,6 +15,7 @@ export type StoredPrediction = ParsedPrediction & {
 
 export interface PredictionRepository {
   savePrediction(participantId: string, prediction: ParsedPrediction): Promise<void>;
+  upsertPrediction(participantId: string, prediction: ParsedPrediction): Promise<"created" | "updated">;
   listPredictions(): Promise<StoredPrediction[]>;
   hasPrediction(participantId: string, homeTeam: string, awayTeam: string): Promise<boolean>;
 }

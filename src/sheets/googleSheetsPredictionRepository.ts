@@ -47,6 +47,22 @@ function normalizeTeamName(value: string): string {
     .toUpperCase();
 }
 
+function columnToLetter(column: number): string {
+  let n = column;
+  let result = "";
+  while (n > 0) {
+    const rem = (n - 1) % 26;
+    result = String.fromCharCode(65 + rem) + result;
+    n = Math.floor((n - 1) / 26);
+  }
+  return result;
+}
+
+function parseSheetName(range: string): string {
+  const [rawSheet] = String(range).split("!");
+  return rawSheet || "Palpites";
+}
+
 export class GoogleSheetsPredictionRepository implements PredictionRepository {
   private readonly config: GoogleSheetsConfig;
 
@@ -115,6 +131,77 @@ export class GoogleSheetsPredictionRepository implements PredictionRepository {
         ],
       },
     });
+  }
+
+  async upsertPrediction(participantId: string, prediction: ParsedPrediction): Promise<"created" | "updated"> {
+    const sheets = await this.getClient();
+    const now = new Date().toISOString();
+    const games = await this.loadGamesDirectory();
+    const expectedGame = games.byTeams.get(
+      `${normalizeTeamName(prediction.homeTeam)}::${normalizeTeamName(prediction.awayTeam)}`,
+    );
+    const gameId = prediction.gameId ?? expectedGame?.id ?? `${prediction.homeTeam.toUpperCase()}-${prediction.awayTeam.toUpperCase()}`;
+
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId: this.config.spreadsheetId,
+      range: this.config.predictionsRange,
+    });
+
+    const rows = response.data.values ?? [];
+    if (rows.length > 1) {
+      const header = rows[0].map((h) => String(h).trim().toLowerCase());
+      const col = (name: string) => header.indexOf(name);
+
+      const idxParticipantId = col("id_usuario");
+      const idxGameId = col("id_jogo");
+      const idxHomeGoals = col("gols_casa");
+      const idxAwayGoals = col("gols_fora");
+      const idxUpdatedAt = col("updated_at");
+      const idxIsDeleted = col("is_deleted");
+
+      if (
+        idxParticipantId >= 0 &&
+        idxGameId >= 0 &&
+        idxHomeGoals >= 0 &&
+        idxAwayGoals >= 0 &&
+        idxUpdatedAt >= 0 &&
+        idxIsDeleted >= 0
+      ) {
+        const dataRows = rows.slice(1);
+        const foundIndex = dataRows.findIndex((row) => {
+          const isDeleted = normalizeBool(row[idxIsDeleted]);
+          return (
+            !isDeleted &&
+            String(row[idxParticipantId] ?? "").trim() === participantId &&
+            String(row[idxGameId] ?? "").trim().toUpperCase() === gameId.toUpperCase()
+          );
+        });
+
+        if (foundIndex >= 0) {
+          const sheetName = parseSheetName(this.config.predictionsRange);
+          const sheetRow = foundIndex + 2;
+          const updates: Array<{ col: number; value: string | number }> = [
+            { col: idxHomeGoals + 1, value: prediction.homeGoals },
+            { col: idxAwayGoals + 1, value: prediction.awayGoals },
+            { col: idxUpdatedAt + 1, value: now },
+          ];
+
+          for (const update of updates) {
+            await sheets.spreadsheets.values.update({
+              spreadsheetId: this.config.spreadsheetId,
+              range: `${sheetName}!${columnToLetter(update.col)}${sheetRow}`,
+              valueInputOption: "USER_ENTERED",
+              requestBody: { values: [[update.value]] },
+            });
+          }
+
+          return "updated";
+        }
+      }
+    }
+
+    await this.savePrediction(participantId, { ...prediction, gameId });
+    return "created";
   }
 
   async hasPrediction(participantId: string, homeTeam: string, awayTeam: string): Promise<boolean> {
