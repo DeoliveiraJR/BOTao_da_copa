@@ -504,7 +504,15 @@ def join_predictions_with_game_and_result(predictions_df: pd.DataFrame, games_df
 
     game_cols = ["id", "homeTeam", "awayTeam", "dateTime", "status"]
     game_use = games_df[game_cols].copy() if not games_df.empty else pd.DataFrame(columns=game_cols)
-    game_use = game_use.rename(columns={"id": "gameId", "status": "gameStatus"})
+    game_use = game_use.rename(
+        columns={
+            "id": "gameId",
+            "status": "gameStatus",
+            "homeTeam": "gameHomeTeam",
+            "awayTeam": "gameAwayTeam",
+            "dateTime": "gameDateTimeRaw",
+        }
+    )
     game_use["gameId"] = game_use["gameId"].apply(normalize_id)
 
     result_cols = ["gameId", "homeGoalsManual", "awayGoalsManual"]
@@ -516,11 +524,16 @@ def join_predictions_with_game_and_result(predictions_df: pd.DataFrame, games_df
 
     merged = preds_use.merge(game_use, on="gameId", how="left").merge(result_use, on="gameId", how="left")
 
+    merged["homeTeamResolved"] = merged["gameHomeTeam"].fillna(merged.get("homeTeam"))
+    merged["awayTeamResolved"] = merged["gameAwayTeam"].fillna(merged.get("awayTeam"))
+    merged["dateTimeResolved"] = merged["gameDateTimeRaw"].fillna(merged.get("dateTime"))
+
     merged["match"] = merged.apply(
-        lambda r: f"{str(r.get('homeTeam') or 'Time A')} x {str(r.get('awayTeam') or 'Time B')}", axis=1
+        lambda r: f"{str(r.get('homeTeamResolved') or 'Time A')} x {str(r.get('awayTeamResolved') or 'Time B')}",
+        axis=1,
     )
-    merged["gameDate"] = merged["dateTime"].apply(fmt_date)
-    merged["gameDateTime"] = merged["dateTime"].apply(fmt_dt)
+    merged["gameDate"] = merged["dateTimeResolved"].apply(fmt_date)
+    merged["gameDateTime"] = merged["dateTimeResolved"].apply(fmt_dt)
     merged["prediction"] = merged.apply(
         lambda r: f"{int(r.get('homeGoals', 0))} x {int(r.get('awayGoals', 0))}", axis=1
     )

@@ -14,6 +14,13 @@ const rankingRepo = createRankingRepository();
 
 const GOOGLE_SCOPES = ["https://www.googleapis.com/auth/spreadsheets"];
 
+function normalizeGameId(value: unknown): string {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "";
+  if (/^\d+\.0$/.test(raw)) return raw.slice(0, -2);
+  return raw;
+}
+
 async function loadParticipantNames(): Promise<Map<string, string>> {
   if (env.PERSISTENCE_PROVIDER !== "google_sheets") return new Map();
   if (!env.GOOGLE_SHEETS_SPREADSHEET_ID || !env.GOOGLE_SERVICE_ACCOUNT_EMAIL || !env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY) {
@@ -61,10 +68,12 @@ export async function consolidateRanking(): Promise<RankingConsolidationResult> 
     if (result.homeGoalsManual === null || result.awayGoalsManual === null) continue;
 
     const actual = { home: result.homeGoalsManual, away: result.awayGoalsManual };
+    const resultGameId = normalizeGameId(result.gameId).toUpperCase();
+    if (!resultGameId) continue;
 
     for (const prediction of predictions) {
-      const expectedId = prediction.gameId.toUpperCase();
-      if (result.gameId.toUpperCase() !== expectedId) continue;
+      const expectedId = normalizeGameId(prediction.gameId).toUpperCase();
+      if (!expectedId || resultGameId !== expectedId) continue;
       if (prediction.isDeleted) continue;
 
       const { points } = calculateBolaoPoints(
@@ -80,6 +89,12 @@ export async function consolidateRanking(): Promise<RankingConsolidationResult> 
   }
 
   // Persist updated totals
+  for (const prediction of predictions) {
+    if (!prediction.isDeleted && !pointsMap.has(prediction.participantId)) {
+      pointsMap.set(prediction.participantId, 0);
+    }
+  }
+
   for (const participantId of participantNames.keys()) {
     if (!pointsMap.has(participantId)) {
       pointsMap.set(participantId, 0);
