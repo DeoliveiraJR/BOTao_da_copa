@@ -92,6 +92,15 @@ Arquivos considerados oficiais por skill:
 		- `npm run bootstrap:sheets`
 	- esse comando cria/garante as abas oficiais e seus cabecalhos padrao.
 
+### Multibolão (Google Sheets)
+- Defina um bolão padrão:
+	- `BOLAO_DEFAULT_ID=copa2026`
+- Defina o mapa `bolaoId -> spreadsheetId`:
+	- `BOLAO_SPREADSHEET_MAP={"copa2026":"ID_PLANILHA_2026","bolao_copa_ii":"ID_PLANILHA_II"}`
+- As rotas aceitam `bolaoId` por query, body ou header `x-bolao-id`.
+- Endpoint de suporte:
+	- `GET /boloes` retorna os bolões configurados.
+
 ## Status atual
 - [x] Skill principal de regulamento implementada
 - [x] Skills dependentes criadas com governanca completa

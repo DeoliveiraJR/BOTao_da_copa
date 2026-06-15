@@ -49,6 +49,12 @@ def current_user_name() -> str:
     return os.getenv("CURRENT_USER_NAME", "Participante")
 
 
+def current_bolao_id() -> str:
+    if "CURRENT_BOLAO_ID" in st.secrets:
+        return str(st.secrets["CURRENT_BOLAO_ID"]).strip()
+    return os.getenv("CURRENT_BOLAO_ID", "").strip()
+
+
 def env_value(key: str, default: str = "") -> str:
     if key in st.secrets:
         value = st.secrets[key]
@@ -406,21 +412,26 @@ def sp_today_start() -> pd.Timestamp:
     return now.normalize()
 
 
-def api_get(base_url: str, timeout_seconds: int, path: str) -> dict[str, Any]:
-    response = requests.get(f"{base_url}{path}", timeout=timeout_seconds)
+def api_get(base_url: str, timeout_seconds: int, path: str, bolao_id: str | None = None) -> dict[str, Any]:
+    params = {"bolaoId": bolao_id} if bolao_id else None
+    response = requests.get(f"{base_url}{path}", params=params, timeout=timeout_seconds)
     response.raise_for_status()
     return response.json()
 
 
-def api_post(base_url: str, timeout_seconds: int, path: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
-    response = requests.post(f"{base_url}{path}", json=payload or {}, timeout=timeout_seconds)
+def api_post(base_url: str, timeout_seconds: int, path: str, payload: dict[str, Any] | None = None, bolao_id: str | None = None) -> dict[str, Any]:
+    body = dict(payload or {})
+    if bolao_id:
+        body["bolaoId"] = bolao_id
+    params = {"bolaoId": bolao_id} if bolao_id else None
+    response = requests.post(f"{base_url}{path}", params=params, json=body, timeout=timeout_seconds)
     response.raise_for_status()
     return response.json()
 
 
-def safe_fetch(base_url: str, timeout_seconds: int, path: str, fallback_key: str) -> tuple[list[dict[str, Any]], str | None]:
+def safe_fetch(base_url: str, timeout_seconds: int, path: str, fallback_key: str, bolao_id: str | None = None) -> tuple[list[dict[str, Any]], str | None]:
     try:
-        data = api_get(base_url, timeout_seconds, path)
+        data = api_get(base_url, timeout_seconds, path, bolao_id=bolao_id)
         return data.get(fallback_key, []), None
     except Exception as exc:  # noqa: BLE001
         return [], str(exc)
@@ -668,6 +679,7 @@ def app() -> None:
 
     user_id = current_user_id()
     user_name = current_user_name()
+    preferred_bolao_id = current_bolao_id()
     avatar_bytes = read_avatar(user_id)
 
     icon_title("fa-trophy", "BOTao da Copa 2026", "Painel do participante")
@@ -701,10 +713,41 @@ def app() -> None:
             st.warning(f"Foto salva localmente, mas a sincronização não concluiu: {message}")
         avatar_bytes = read_avatar(user_id)
 
-    ranking_items, ranking_err = safe_fetch(api_base_url, timeout_seconds, "/ranking", "ranking")
-    predictions_items, pred_err = safe_fetch(api_base_url, timeout_seconds, "/predictions", "predictions")
-    results_items, results_err = safe_fetch(api_base_url, timeout_seconds, "/results", "results")
-    games_items, games_err = safe_fetch(api_base_url, timeout_seconds, "/games", "games")
+    boloes_items, boloes_err = safe_fetch(api_base_url, timeout_seconds, "/boloes", "boloes")
+    if boloes_err:
+        st.error(f"Erro ao carregar bolões configurados: {boloes_err}")
+        return
+
+    boloes = [
+        {"id": str(item.get("id", "")).strip(), "name": str(item.get("name", "")).strip()}
+        for item in boloes_items
+        if str(item.get("id", "")).strip()
+    ]
+
+    if not boloes:
+        st.error("Nenhum bolão configurado na API. Configure BOLAO_SPREADSHEET_MAP ou GOOGLE_SHEETS_SPREADSHEET_ID.")
+        return
+
+    bolao_ids = [b["id"] for b in boloes]
+    default_bolao = preferred_bolao_id if preferred_bolao_id in bolao_ids else bolao_ids[0]
+    if "selected_bolao_id" not in st.session_state or st.session_state["selected_bolao_id"] not in bolao_ids:
+        st.session_state["selected_bolao_id"] = default_bolao
+
+    c_bolao, _c_spacer = st.columns([2, 3])
+    with c_bolao:
+        st.selectbox(
+            "Bolão",
+            bolao_ids,
+            format_func=lambda item_id: next((b["name"] for b in boloes if b["id"] == item_id), item_id),
+            key="selected_bolao_id",
+        )
+
+    selected_bolao_id = str(st.session_state["selected_bolao_id"])
+
+    ranking_items, ranking_err = safe_fetch(api_base_url, timeout_seconds, "/ranking", "ranking", bolao_id=selected_bolao_id)
+    predictions_items, pred_err = safe_fetch(api_base_url, timeout_seconds, "/predictions", "predictions", bolao_id=selected_bolao_id)
+    results_items, results_err = safe_fetch(api_base_url, timeout_seconds, "/results", "results", bolao_id=selected_bolao_id)
+    games_items, games_err = safe_fetch(api_base_url, timeout_seconds, "/games", "games", bolao_id=selected_bolao_id)
 
     if ranking_err or pred_err or results_err or games_err:
         st.error(
@@ -804,6 +847,7 @@ def app() -> None:
                                 "homeGoals": int(home_g),
                                 "awayGoals": int(away_g),
                             },
+                            bolao_id=selected_bolao_id,
                         )
                         action = "atualizado" if resp.get("action") == "updated" else "registrado"
                         st.success(f"Palpite {action} com sucesso.")
@@ -831,8 +875,9 @@ def app() -> None:
 
             st.caption(f"Total exibido: {len(filtered)}")
             filtered = filtered.copy()
+            filtered["gameDateOrder"] = pd.to_datetime(filtered.get("dateTimeResolved"), errors="coerce", utc=True)
             filtered["updatedAtOrder"] = pd.to_datetime(filtered["updatedAt"], errors="coerce", utc=True)
-            filtered = filtered.sort_values(by="updatedAtOrder", ascending=False)
+            filtered = filtered.sort_values(by=["gameDateOrder", "updatedAtOrder"], ascending=[False, False])
 
             for _, row in filtered.iterrows():
                 render_table_card(
@@ -913,8 +958,9 @@ def app() -> None:
                                     "awayGoalsManual": int(away_result),
                                     "reconciliationStatus": recon_status,
                                 },
+                                bolao_id=selected_bolao_id,
                             )
-                            api_post(api_base_url, timeout_seconds, "/ranking/consolidate", {})
+                            api_post(api_base_url, timeout_seconds, "/ranking/consolidate", {}, bolao_id=selected_bolao_id)
                             st.success("Resultado salvo e ranking recalculado com sucesso.")
                             st.rerun()
                         except Exception as exc:  # noqa: BLE001

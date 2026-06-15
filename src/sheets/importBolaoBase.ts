@@ -1,6 +1,7 @@
 import path from "node:path";
 import { google } from "googleapis";
 import XLSX from "xlsx";
+import { resolveSpreadsheetIdForBolao } from "../config/bolaoConfig.js";
 import { env } from "../config/env.js";
 
 const GOOGLE_SCOPES = ["https://www.googleapis.com/auth/spreadsheets"];
@@ -44,6 +45,12 @@ function parseOptionalInt(value: unknown): number | null {
 function normalizeStatus(value: unknown): "ativo" | "inativo" {
   const v = normalizeText(value);
   return ["sim", "yes", "true", "1", "ativo"].includes(v) ? "ativo" : "inativo";
+}
+
+function resolveParticipantAlias(name: string): string {
+  const n = normalizeText(name);
+  if (n === "fabio") return "peregrino";
+  return n;
 }
 
 function toIsoDateTime(dateValue: unknown, hourValue: unknown): string {
@@ -107,6 +114,8 @@ async function main() {
   const args = process.argv.slice(2);
   const apply = args.includes("--apply");
   const pathArg = args.find((a) => !a.startsWith("--"));
+  const bolaoArg = args.find((a) => a.startsWith("--bolao-id="))?.split("=")[1]?.trim();
+  const spreadsheetArg = args.find((a) => a.startsWith("--spreadsheet-id="))?.split("=")[1]?.trim();
   const filePath = path.resolve(process.cwd(), pathArg ?? "../bolao_zica.xlsx");
   const nowDate = new Date();
   const now = nowDate.toISOString();
@@ -213,7 +222,7 @@ async function main() {
 
       const participantId =
         participantById.get(normalizeId(participantRaw)) ??
-        participantByName.get(normalizeText(participantRaw));
+        participantByName.get(resolveParticipantAlias(participantRaw));
 
       if (!participantId) {
         unknownParticipants.add(participantRaw);
@@ -291,7 +300,7 @@ async function main() {
     return;
   }
 
-  const spreadsheetId = required(env.GOOGLE_SHEETS_SPREADSHEET_ID, "GOOGLE_SHEETS_SPREADSHEET_ID");
+  const spreadsheetId = spreadsheetArg || resolveSpreadsheetIdForBolao(bolaoArg).spreadsheetId || required(env.GOOGLE_SHEETS_SPREADSHEET_ID, "GOOGLE_SHEETS_SPREADSHEET_ID");
   const sheets = await getSheetsClient();
 
   await writeTabRows(sheets, spreadsheetId, "Participantes!A2:Z", participantsValues);

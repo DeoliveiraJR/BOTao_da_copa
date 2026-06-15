@@ -1,5 +1,6 @@
 import express from "express";
 import { env } from "./config/env.js";
+import { listConfiguredBoloes, resolveSpreadsheetIdForBolao } from "./config/bolaoConfig.js";
 import { consolidateRanking, getRanking } from "./domain/rankingService.js";
 import { createGameRepository, createPredictionRepository, createResultRepository } from "./sheets/predictionRepositoryFactory.js";
 import { listPredictions } from "./sheets/sheetsService.js";
@@ -7,9 +8,6 @@ import { whatsappRouter } from "./whatsapp/webhookRouter.js";
 import { twilioRouter } from "./whatsapp/twilioRouter.js";
 
 const app = express();
-const resultRepo = createResultRepository();
-const gameRepo = createGameRepository();
-const predictionRepo = createPredictionRepository();
 
 function toSaoPauloDateKey(date: Date): string {
   return new Intl.DateTimeFormat("en-CA", {
@@ -41,25 +39,64 @@ function getNextSaoPauloDateKey(reference = new Date()): string {
   }).format(nextUtc);
 }
 
+function asString(value: unknown): string {
+  if (Array.isArray(value)) {
+    return String(value[0] ?? "").trim();
+  }
+  return String(value ?? "").trim();
+}
+
+function resolveBolaoId(req: express.Request): string | undefined {
+  const queryValue = asString(req.query?.bolaoId);
+  const bodyValue = asString((req.body as Record<string, unknown> | undefined)?.bolaoId);
+  const headerValue = asString(req.header("x-bolao-id"));
+  const value = queryValue || bodyValue || headerValue;
+  return value || undefined;
+}
+
 app.use(express.urlencoded({ extended: false }));
 app.use(express.json());
 
-app.get("/health", (_req, res) => {
-  res.status(200).json({ ok: true, service: "botao-da-copa" });
+app.get("/health", (req, res) => {
+  if (env.PERSISTENCE_PROVIDER !== "google_sheets") {
+    return res.status(200).json({ ok: true, service: "botao-da-copa", bolaoId: env.BOLAO_DEFAULT_ID });
+  }
+
+  const bolaoId = resolveBolaoId(req);
+  const resolved = resolveSpreadsheetIdForBolao(bolaoId);
+  return res.status(200).json({ ok: true, service: "botao-da-copa", bolaoId: resolved.bolaoId });
 });
 
-app.get("/predictions", async (_req, res) => {
-  const predictions = await listPredictions();
-  res.status(200).json({ ok: true, count: predictions.length, predictions });
+app.get("/boloes", (_req, res) => {
+  if (env.PERSISTENCE_PROVIDER !== "google_sheets") {
+    return res.status(200).json({
+      ok: true,
+      defaultBolaoId: env.BOLAO_DEFAULT_ID,
+      count: 1,
+      boloes: [{ id: env.BOLAO_DEFAULT_ID, name: env.BOLAO_DEFAULT_ID }],
+    });
+  }
+
+  const boloes = listConfiguredBoloes().map((item) => ({ id: item.id, name: item.name }));
+  return res.status(200).json({ ok: true, defaultBolaoId: env.BOLAO_DEFAULT_ID, count: boloes.length, boloes });
+});
+
+app.get("/predictions", async (req, res) => {
+  const bolaoId = resolveBolaoId(req);
+  const predictions = await listPredictions(bolaoId);
+  res.status(200).json({ ok: true, bolaoId: bolaoId ?? env.BOLAO_DEFAULT_ID, count: predictions.length, predictions });
 });
 
 // Body: { participantId: string, gameId: string, homeGoals: number, awayGoals: number }
 app.post("/predictions", async (req, res) => {
+  const bolaoId = resolveBolaoId(req);
   const { participantId, gameId, homeGoals, awayGoals } = req.body ?? {};
   if (!participantId || !gameId || homeGoals === undefined || awayGoals === undefined) {
     return res.status(400).json({ ok: false, error: "participantId, gameId, homeGoals e awayGoals são obrigatórios" });
   }
 
+  const gameRepo = createGameRepository(bolaoId);
+  const predictionRepo = createPredictionRepository(bolaoId);
   const games = await gameRepo.listGames();
   const game = games.find((g) => String(g.id) === String(gameId));
   if (!game) {
@@ -86,6 +123,7 @@ app.post("/predictions", async (req, res) => {
 
   return res.status(201).json({
     ok: true,
+    bolaoId: bolaoId ?? env.BOLAO_DEFAULT_ID,
     action,
     gameId: game.id,
     homeTeam: game.homeTeam,
@@ -93,31 +131,39 @@ app.post("/predictions", async (req, res) => {
   });
 });
 
-app.get("/games", async (_req, res) => {
+app.get("/games", async (req, res) => {
+  const bolaoId = resolveBolaoId(req);
+  const gameRepo = createGameRepository(bolaoId);
   const games = await gameRepo.listGames();
-  res.status(200).json({ ok: true, count: games.length, games });
+  res.status(200).json({ ok: true, bolaoId: bolaoId ?? env.BOLAO_DEFAULT_ID, count: games.length, games });
 });
 
-app.get("/ranking", async (_req, res) => {
-  const ranking = await getRanking();
-  res.status(200).json({ ok: true, count: ranking.length, ranking });
+app.get("/ranking", async (req, res) => {
+  const bolaoId = resolveBolaoId(req);
+  const ranking = await getRanking(bolaoId);
+  res.status(200).json({ ok: true, bolaoId: bolaoId ?? env.BOLAO_DEFAULT_ID, count: ranking.length, ranking });
 });
 
-app.post("/ranking/consolidate", async (_req, res) => {
-  const result = await consolidateRanking();
-  res.status(200).json({ ok: true, ...result });
+app.post("/ranking/consolidate", async (req, res) => {
+  const bolaoId = resolveBolaoId(req);
+  const result = await consolidateRanking(bolaoId);
+  res.status(200).json({ ok: true, bolaoId: bolaoId ?? env.BOLAO_DEFAULT_ID, ...result });
 });
 
 app.use("/whatsapp", whatsappRouter);
 app.use("/twilio", twilioRouter);
 
-app.get("/results", async (_req, res) => {
+app.get("/results", async (req, res) => {
+  const bolaoId = resolveBolaoId(req);
+  const resultRepo = createResultRepository(bolaoId);
   const results = await resultRepo.listConfirmedResults();
-  res.status(200).json({ ok: true, count: results.length, results });
+  res.status(200).json({ ok: true, bolaoId: bolaoId ?? env.BOLAO_DEFAULT_ID, count: results.length, results });
 });
 
 // Body: { gameId: string, homeGoalsManual: number, awayGoalsManual: number, reconciliationStatus?: "pending"|"confirmed"|"conflict" }
 app.post("/results", async (req, res) => {
+  const bolaoId = resolveBolaoId(req);
+  const resultRepo = createResultRepository(bolaoId);
   const { gameId, homeGoalsManual, awayGoalsManual, reconciliationStatus = "confirmed" } = req.body ?? {};
   if (!gameId || homeGoalsManual === undefined || awayGoalsManual === undefined) {
     return res.status(400).json({ ok: false, error: "gameId, homeGoalsManual e awayGoalsManual são obrigatórios" });
@@ -131,7 +177,15 @@ app.post("/results", async (req, res) => {
     reconciliationStatus,
     officialResult: "manual",
   });
-  return res.status(201).json({ ok: true, gameId });
+  return res.status(201).json({ ok: true, bolaoId: bolaoId ?? env.BOLAO_DEFAULT_ID, gameId });
+});
+
+app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  const message = error instanceof Error ? error.message : String(error);
+  if (message.includes("Bolão não configurado")) {
+    return res.status(400).json({ ok: false, error: message });
+  }
+  return res.status(500).json({ ok: false, error: message || "Erro interno" });
 });
 
 app.listen(env.PORT, () => {

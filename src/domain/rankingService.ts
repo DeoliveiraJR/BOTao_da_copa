@@ -1,5 +1,6 @@
 import { calculateBolaoPoints } from "../domain/scoring.js";
 import { env } from "../config/env.js";
+import { resolveSpreadsheetIdForBolao } from "../config/bolaoConfig.js";
 import { google } from "googleapis";
 import {
   createPredictionRepository,
@@ -7,10 +8,6 @@ import {
   createResultRepository,
 } from "../sheets/predictionRepositoryFactory.js";
 import type { RankingEntry } from "../sheets/types.js";
-
-const predictionRepo = createPredictionRepository();
-const resultRepo = createResultRepository();
-const rankingRepo = createRankingRepository();
 
 const GOOGLE_SCOPES = ["https://www.googleapis.com/auth/spreadsheets"];
 
@@ -21,11 +18,13 @@ function normalizeGameId(value: unknown): string {
   return raw;
 }
 
-async function loadParticipantNames(): Promise<Map<string, string>> {
+async function loadParticipantNames(bolaoId?: string): Promise<Map<string, string>> {
   if (env.PERSISTENCE_PROVIDER !== "google_sheets") return new Map();
-  if (!env.GOOGLE_SHEETS_SPREADSHEET_ID || !env.GOOGLE_SERVICE_ACCOUNT_EMAIL || !env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY) {
+  if (!env.GOOGLE_SERVICE_ACCOUNT_EMAIL || !env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY) {
     return new Map();
   }
+
+  const resolved = resolveSpreadsheetIdForBolao(bolaoId);
 
   const auth = new google.auth.JWT({
     email: env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
@@ -34,7 +33,7 @@ async function loadParticipantNames(): Promise<Map<string, string>> {
   });
   const sheets = google.sheets({ version: "v4", auth });
   const response = await sheets.spreadsheets.values.get({
-    spreadsheetId: env.GOOGLE_SHEETS_SPREADSHEET_ID,
+    spreadsheetId: resolved.spreadsheetId,
     range: "Participantes!A:B",
   });
 
@@ -54,12 +53,16 @@ export type RankingConsolidationResult = {
   ranking: RankingEntry[];
 };
 
-export async function consolidateRanking(): Promise<RankingConsolidationResult> {
+export async function consolidateRanking(bolaoId?: string): Promise<RankingConsolidationResult> {
+  const predictionRepo = createPredictionRepository(bolaoId);
+  const resultRepo = createResultRepository(bolaoId);
+  const rankingRepo = createRankingRepository(bolaoId);
+
   const [predictions, confirmedResults] = await Promise.all([
     predictionRepo.listPredictions(),
     resultRepo.listConfirmedResults(),
   ]);
-  const participantNames = await loadParticipantNames();
+  const participantNames = await loadParticipantNames(bolaoId);
 
   // Accumulate points per participant across all confirmed results
   const pointsMap = new Map<string, number>();
@@ -110,6 +113,7 @@ export async function consolidateRanking(): Promise<RankingConsolidationResult> 
   return { processed: confirmedResults.length, ranking };
 }
 
-export async function getRanking(): Promise<RankingEntry[]> {
+export async function getRanking(bolaoId?: string): Promise<RankingEntry[]> {
+  const rankingRepo = createRankingRepository(bolaoId);
   return rankingRepo.listRanking();
 }

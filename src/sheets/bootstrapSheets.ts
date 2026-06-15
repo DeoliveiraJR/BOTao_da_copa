@@ -1,4 +1,5 @@
 import { google } from "googleapis";
+import { resolveSpreadsheetIdForBolao } from "../config/bolaoConfig.js";
 import { env } from "../config/env.js";
 
 type SheetDefinition = {
@@ -91,8 +92,17 @@ async function getSheetsClient() {
   return google.sheets({ version: "v4", auth });
 }
 
+function parseCliArgs() {
+  const args = process.argv.slice(2);
+  const bolaoId = args.find((a) => a.startsWith("--bolao-id="))?.split("=")[1]?.trim();
+  const spreadsheetId = args.find((a) => a.startsWith("--spreadsheet-id="))?.split("=")[1]?.trim();
+  return { bolaoId, spreadsheetId };
+}
+
 async function ensureSheetStructure() {
-  const spreadsheetId = getRequired(env.GOOGLE_SHEETS_SPREADSHEET_ID, "GOOGLE_SHEETS_SPREADSHEET_ID");
+  const { bolaoId, spreadsheetId: spreadsheetArg } = parseCliArgs();
+  const spreadsheetId =
+    spreadsheetArg || resolveSpreadsheetIdForBolao(bolaoId).spreadsheetId || getRequired(env.GOOGLE_SHEETS_SPREADSHEET_ID, "GOOGLE_SHEETS_SPREADSHEET_ID");
   const sheets = await getSheetsClient();
 
   const metadata = await sheets.spreadsheets.get({ spreadsheetId });

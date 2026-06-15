@@ -8,6 +8,8 @@ const EnvSchema = z.object({
   WHATSAPP_VERIFY_TOKEN: z.string().default("botao-verify-token"),
   TIMEZONE: z.string().default("America/Sao_Paulo"),
   PERSISTENCE_PROVIDER: z.enum(["in_memory", "google_sheets"]).default("in_memory"),
+  BOLAO_DEFAULT_ID: z.string().default("default"),
+  BOLAO_SPREADSHEET_MAP: z.string().optional(),
   GOOGLE_SHEETS_SPREADSHEET_ID: z.string().optional(),
   GOOGLE_SHEETS_PREDICTIONS_RANGE: z.string().default("Palpites!A:J"),
   GOOGLE_SERVICE_ACCOUNT_EMAIL: z.string().optional(),

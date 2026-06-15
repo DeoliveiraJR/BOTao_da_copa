@@ -208,6 +208,20 @@ GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY="cole_aqui_o_private_key_do_json_exatamente_c
 
 > IMPORTANTE: o `private_key` tem quebras de linha `\n` no JSON. Cole-o entre aspas duplas, exatamente como aparece no JSON baixado.
 
+### Passo 5.1 (opcional): Configurar multibolão
+
+No mesmo `.env`, defina:
+
+```env
+BOLAO_DEFAULT_ID=copa2026
+BOLAO_SPREADSHEET_MAP={"copa2026":"ID_PLANILHA_2026","bolao_copa_ii":"ID_PLANILHA_II"}
+```
+
+Notas:
+- Se `BOLAO_SPREADSHEET_MAP` estiver preenchido, a API seleciona a planilha pelo `bolaoId`.
+- O Streamlit usa `GET /boloes` e permite alternar o bolão no topo da tela.
+- Opcional no Streamlit: `CURRENT_BOLAO_ID=bolao_copa_ii` para iniciar já filtrado.
+
 ---
 
 ### Passo 6: Criar as abas da planilha automaticamente
@@ -240,6 +254,26 @@ curl -X POST http://localhost:3000/whatsapp/webhook \
 ```
 
 Abra a planilha e veja a nova linha na aba **Palpites**.
+
+### Importar base XLSX em bolão específico
+
+Dry run:
+
+```bash
+npm run import:bolao -- ../bolao_copa.xlsx
+```
+
+Aplicar no bolão mapeado:
+
+```bash
+npm run import:bolao -- ../bolao_copa.xlsx --apply --bolao-id=bolao_copa_ii
+```
+
+Aplicar direto por spreadsheetId:
+
+```bash
+npm run import:bolao -- ../bolao_copa.xlsx --apply --spreadsheet-id=SEU_ID_DA_PLANILHA
+```
 
 ---
 

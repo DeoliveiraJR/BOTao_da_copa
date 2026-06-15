@@ -1,4 +1,5 @@
 import { env } from "../config/env.js";
+import { resolveSpreadsheetIdForBolao } from "../config/bolaoConfig.js";
 import { GoogleSheetsGameRepository } from "./googleSheetsGameRepository.js";
 import { GoogleSheetsPredictionRepository } from "./googleSheetsPredictionRepository.js";
 import { GoogleSheetsRankingRepository } from "./googleSheetsRankingRepository.js";
@@ -21,9 +22,10 @@ export function getRequired(value: string | undefined, name: string): string {
   return value;
 }
 
-function googleSheetsConfig() {
+function googleSheetsConfig(bolaoId?: string) {
+  const resolved = resolveSpreadsheetIdForBolao(bolaoId);
   return {
-    spreadsheetId: getRequired(env.GOOGLE_SHEETS_SPREADSHEET_ID, "GOOGLE_SHEETS_SPREADSHEET_ID"),
+    spreadsheetId: resolved.spreadsheetId,
     serviceAccountEmail: getRequired(env.GOOGLE_SERVICE_ACCOUNT_EMAIL, "GOOGLE_SERVICE_ACCOUNT_EMAIL"),
     serviceAccountPrivateKey: getRequired(
       env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY,
@@ -32,9 +34,9 @@ function googleSheetsConfig() {
   };
 }
 
-export function createPredictionRepository(): PredictionRepository {
+export function createPredictionRepository(bolaoId?: string): PredictionRepository {
   if (env.PERSISTENCE_PROVIDER === "google_sheets") {
-    const base = googleSheetsConfig();
+    const base = googleSheetsConfig(bolaoId);
     return new GoogleSheetsPredictionRepository({
       ...base,
       predictionsRange: env.GOOGLE_SHEETS_PREDICTIONS_RANGE,
@@ -43,23 +45,23 @@ export function createPredictionRepository(): PredictionRepository {
   return inMemoryPrediction;
 }
 
-export function createGameRepository(): GameRepository {
+export function createGameRepository(bolaoId?: string): GameRepository {
   if (env.PERSISTENCE_PROVIDER === "google_sheets") {
-    return new GoogleSheetsGameRepository(googleSheetsConfig());
+    return new GoogleSheetsGameRepository(googleSheetsConfig(bolaoId));
   }
   return inMemoryGame;
 }
 
-export function createResultRepository(): ResultRepository {
+export function createResultRepository(bolaoId?: string): ResultRepository {
   if (env.PERSISTENCE_PROVIDER === "google_sheets") {
-    return new GoogleSheetsResultRepository(googleSheetsConfig());
+    return new GoogleSheetsResultRepository(googleSheetsConfig(bolaoId));
   }
   return inMemoryResult;
 }
 
-export function createRankingRepository(): RankingRepository {
+export function createRankingRepository(bolaoId?: string): RankingRepository {
   if (env.PERSISTENCE_PROVIDER === "google_sheets") {
-    return new GoogleSheetsRankingRepository(googleSheetsConfig());
+    return new GoogleSheetsRankingRepository(googleSheetsConfig(bolaoId));
   }
   return inMemoryRanking;
 }
