@@ -5,6 +5,7 @@ from io import BytesIO
 import base64
 import os
 from pathlib import Path
+import re
 from typing import Any
 
 from PIL import Image, ImageDraw, ImageFont
@@ -429,6 +430,26 @@ def to_df(items: list[dict[str, Any]]) -> pd.DataFrame:
     return pd.DataFrame(items) if items else pd.DataFrame()
 
 
+def normalize_id(value: Any) -> str:
+    if value is None:
+        return ""
+    text = str(value).strip()
+    if not text:
+        return ""
+    # Evita mismatch comum entre "10" e "10.0" em merges vindos de planilha.
+    if re.fullmatch(r"\d+\.0", text):
+        return text[:-2]
+    return text
+
+
+def is_placeholder_team(value: Any) -> bool:
+    name = str(value or "").strip().lower()
+    if not name:
+        return True
+    placeholders = ["a definir", "vencedor", "perdedor", "slot", "tbd", "to be defined"]
+    return any(token in name for token in placeholders)
+
+
 def score_reason(pred_home: int, pred_away: int, real_home: int, real_away: int) -> str:
     if pred_home == real_home and pred_away == real_away:
         return "exact"
@@ -484,14 +505,19 @@ def join_predictions_with_game_and_result(predictions_df: pd.DataFrame, games_df
     game_cols = ["id", "homeTeam", "awayTeam", "dateTime", "status"]
     game_use = games_df[game_cols].copy() if not games_df.empty else pd.DataFrame(columns=game_cols)
     game_use = game_use.rename(columns={"id": "gameId", "status": "gameStatus"})
+    game_use["gameId"] = game_use["gameId"].apply(normalize_id)
 
     result_cols = ["gameId", "homeGoalsManual", "awayGoalsManual"]
     result_use = results_df[result_cols].copy() if not results_df.empty else pd.DataFrame(columns=result_cols)
+    result_use["gameId"] = result_use["gameId"].apply(normalize_id)
 
-    merged = predictions_df.merge(game_use, on="gameId", how="left").merge(result_use, on="gameId", how="left")
+    preds_use = predictions_df.copy()
+    preds_use["gameId"] = preds_use["gameId"].apply(normalize_id)
+
+    merged = preds_use.merge(game_use, on="gameId", how="left").merge(result_use, on="gameId", how="left")
 
     merged["match"] = merged.apply(
-        lambda r: f"{r.get('homeTeam', 'Time A')} x {r.get('awayTeam', 'Time B')}", axis=1
+        lambda r: f"{str(r.get('homeTeam') or 'Time A')} x {str(r.get('awayTeam') or 'Time B')}", axis=1
     )
     merged["gameDate"] = merged["dateTime"].apply(fmt_date)
     merged["gameDateTime"] = merged["dateTime"].apply(fmt_dt)
@@ -551,29 +577,54 @@ def create_share_background(width: int = 1400, height: int = 1400) -> Image.Imag
     return img
 
 
+def load_font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+    candidates = [
+        "C:/Windows/Fonts/seguisb.ttf" if bold else "C:/Windows/Fonts/segoeui.ttf",
+        "C:/Windows/Fonts/arialbd.ttf" if bold else "C:/Windows/Fonts/arial.ttf",
+    ]
+    for path in candidates:
+        try:
+            if Path(path).exists():
+                return ImageFont.truetype(path, size=size)
+        except Exception:
+            continue
+    return ImageFont.load_default()
+
+
+def trim_text(text: str, font: ImageFont.ImageFont, max_width: int, draw: ImageDraw.ImageDraw) -> str:
+    value = str(text)
+    while value and draw.textlength(value, font=font) > max_width:
+        value = value[:-1]
+    return value if value == str(text) else f"{value.rstrip()}..."
+
+
 def make_share_card(title: str, subtitle: str, lines: list[str], avatar: bytes | None = None) -> bytes:
     width, height = 1400, 1400
     img = create_share_background(width, height)
     draw = ImageDraw.Draw(img)
-    f_title = ImageFont.load_default()
-    f_text = ImageFont.load_default()
+    f_title = load_font(56, bold=True)
+    f_subtitle = load_font(28, bold=False)
+    f_section = load_font(27, bold=True)
+    f_text = load_font(30, bold=False)
 
-    draw.text((110, 104), title, fill="#0c1730", font=f_title)
-    draw.text((110, 146), subtitle, fill="#1b2f59", font=f_text)
+    draw.text((110, 95), trim_text(title, f_title, width - 250, draw), fill="#0c1730", font=f_title)
+    draw.text((110, 160), trim_text(subtitle, f_subtitle, width - 260, draw), fill="#1b2f59", font=f_subtitle)
 
     # scoreboard band
-    draw.rounded_rectangle((80, 260, width - 80, 540), radius=22, fill="#0f2a4d", outline="#7cf0ff", width=3)
-    draw.text((110, 290), "Tabela em destaque", fill="#7cf0ff", font=f_text)
+    draw.rounded_rectangle((80, 260, width - 80, height - 180), radius=22, fill="#0f2a4d", outline="#7cf0ff", width=3)
+    draw.text((110, 290), "Tabela em destaque", fill="#7cf0ff", font=f_section)
 
-    y = 330
+    y = 350
     for line in lines[:12]:
-        draw.rounded_rectangle((110, y, width - 110, y + 58), radius=10, fill="#f9f4de", outline="#c9b45b", width=2)
-        draw.text((132, y + 18), line, fill="#0c1730", font=f_text)
-        y += 74
+        if y + 62 > height - 220:
+            break
+        draw.rounded_rectangle((110, y, width - 110, y + 62), radius=10, fill="#f9f4de", outline="#c9b45b", width=2)
+        draw.text((132, y + 15), trim_text(line, f_text, width - 290, draw), fill="#0c1730", font=f_text)
+        y += 76
 
     # side trophy / crest and avatar circle
     draw.ellipse((1060, 620, 1290, 850), fill="#f5d86b", outline="#ffffff", width=4)
-    draw.text((1130, 702), "🏆", fill="#0c1730", font=f_title)
+    draw.text((1148, 690), "T", fill="#0c1730", font=load_font(70, bold=True))
 
     if avatar:
         try:
@@ -657,21 +708,32 @@ def app() -> None:
 
     confirmed_game_ids: set[str] = set()
     if not results_df.empty and {"gameId", "homeGoalsManual", "awayGoalsManual"}.issubset(results_df.columns):
+        results_df = results_df.copy()
+        results_df["gameId"] = results_df["gameId"].apply(normalize_id)
         done_rows = results_df[
             results_df["homeGoalsManual"].notna() & results_df["awayGoalsManual"].notna()
         ]
-        confirmed_game_ids = set(done_rows["gameId"].astype(str).tolist())
+        confirmed_game_ids = set(done_rows["gameId"].tolist())
 
     eligible_games_df = pd.DataFrame()
     if not games_df.empty and {"id", "dateTime", "status"}.issubset(games_df.columns):
         _g = games_df.copy()
+        _g["id"] = _g["id"].apply(normalize_id)
+        if "homeTeam" not in _g.columns:
+            _g["homeTeam"] = ""
+        if "awayTeam" not in _g.columns:
+            _g["awayTeam"] = ""
+        _g["homeTeam"] = _g["homeTeam"].astype(str)
+        _g["awayTeam"] = _g["awayTeam"].astype(str)
         _g["dateTimeSp"] = _g["dateTime"].apply(to_sp_datetime)
         today_start = sp_today_start()
         eligible_games_df = _g[
             _g["dateTimeSp"].notna()
             & (_g["dateTimeSp"] >= today_start)
             & (_g["status"].astype(str).str.lower() != "finished")
-            & (~_g["id"].astype(str).isin(confirmed_game_ids))
+            & (~_g["id"].isin(confirmed_game_ids))
+            & (~_g["homeTeam"].apply(is_placeholder_team))
+            & (~_g["awayTeam"].apply(is_placeholder_team))
         ].sort_values(by="dateTimeSp")
 
     name_map = participant_name_map(ranking_df)
@@ -850,6 +912,8 @@ def app() -> None:
         else:
             results_use = results_df.copy()
             game_name = games_df[["id", "homeTeam", "awayTeam", "dateTime"]].rename(columns={"id": "gameId"}) if not games_df.empty else pd.DataFrame(columns=["gameId", "homeTeam", "awayTeam", "dateTime"])
+            game_name["gameId"] = game_name["gameId"].apply(normalize_id)
+            results_use["gameId"] = results_use["gameId"].apply(normalize_id)
             results_use = results_use.merge(game_name, on="gameId", how="left")
             results_use["Partida"] = results_use.apply(lambda r: f"{r.get('homeTeam', 'A')} x {r.get('awayTeam', 'B')}", axis=1)
             results_use["Data"] = results_use["dateTime"].apply(fmt_date)
