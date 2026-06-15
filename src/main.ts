@@ -1,13 +1,14 @@
 import express from "express";
 import { env } from "./config/env.js";
 import { consolidateRanking, getRanking } from "./domain/rankingService.js";
-import { createResultRepository } from "./sheets/predictionRepositoryFactory.js";
+import { createGameRepository, createResultRepository } from "./sheets/predictionRepositoryFactory.js";
 import { listPredictions } from "./sheets/sheetsService.js";
 import { whatsappRouter } from "./whatsapp/webhookRouter.js";
 import { twilioRouter } from "./whatsapp/twilioRouter.js";
 
 const app = express();
 const resultRepo = createResultRepository();
+const gameRepo = createGameRepository();
 
 app.use(express.urlencoded({ extended: false }));
 app.use(express.json());
@@ -19,6 +20,11 @@ app.get("/health", (_req, res) => {
 app.get("/predictions", async (_req, res) => {
   const predictions = await listPredictions();
   res.status(200).json({ ok: true, count: predictions.length, predictions });
+});
+
+app.get("/games", async (_req, res) => {
+  const games = await gameRepo.listGames();
+  res.status(200).json({ ok: true, count: games.length, games });
 });
 
 app.get("/ranking", async (_req, res) => {
