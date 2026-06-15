@@ -11,6 +11,10 @@ import pandas as pd
 import requests
 import streamlit as st
 from streamlit.components.v1 import html
+from dotenv import load_dotenv
+from supabase import Client, create_client
+
+load_dotenv(Path(__file__).resolve().parents[1] / ".env", override=False)
 
 st.set_page_config(
     page_title="BOTao da Copa 2026",
@@ -22,6 +26,7 @@ st.set_page_config(
 ASSETS_DIR = Path(__file__).resolve().parent / "assets"
 AVATAR_DIR = ASSETS_DIR / "avatars"
 DEFAULT_AVATAR = ASSETS_DIR / "avatar-default.png"
+SUPABASE_PROFILE_TABLE = "participant_profiles"
 
 
 def default_api_base_url() -> str:
@@ -42,8 +47,90 @@ def current_user_name() -> str:
     return os.getenv("CURRENT_USER_NAME", "Participante")
 
 
+def env_value(key: str, default: str = "") -> str:
+    if key in st.secrets:
+        value = st.secrets[key]
+        return str(value).strip()
+    return os.getenv(key, default).strip()
+
+
 def supabase_enabled() -> bool:
-    return bool(st.secrets.get("SUPABASE_URL")) and bool(st.secrets.get("SUPABASE_SERVICE_ROLE_KEY"))
+    return bool(env_value("SUPABASE_URL")) and bool(env_value("SUPABASE_SERVICE_ROLE_KEY"))
+
+
+def supabase_bucket_name() -> str:
+    return env_value("SUPABASE_BUCKET", "avatars")
+
+
+@st.cache_resource(show_spinner=False)
+def supabase_client(url: str, key: str) -> Client:
+    return create_client(url, key)
+
+
+def get_supabase_client() -> Client | None:
+    if not supabase_enabled():
+        return None
+    return supabase_client(env_value("SUPABASE_URL"), env_value("SUPABASE_SERVICE_ROLE_KEY"))
+
+
+def supabase_avatar_path(user_id: str) -> str:
+    return f"participants/{user_id}/avatar.png"
+
+
+def supabase_store_avatar(user_id: str, display_name: str, avatar_bytes: bytes, content_type: str) -> tuple[bool, str]:
+    client = get_supabase_client()
+    if client is None:
+        return False, "Supabase indisponível"
+
+    bucket = supabase_bucket_name()
+    avatar_path = supabase_avatar_path(user_id)
+
+    try:
+        client.storage.from_(bucket).remove([avatar_path])
+    except Exception:
+        pass
+
+    try:
+        client.storage.from_(bucket).upload(
+            avatar_path,
+            avatar_bytes,
+            file_options={"content-type": content_type},
+        )
+    except Exception as exc:  # noqa: BLE001
+        return False, f"Falha ao enviar avatar ao Storage: {exc}"
+
+    try:
+        client.table(SUPABASE_PROFILE_TABLE).upsert(
+            {
+                "participant_id": user_id,
+                "display_name": display_name,
+                "avatar_path": avatar_path,
+                "updated_at": datetime.now().isoformat(),
+            }
+        ).execute()
+    except Exception as exc:  # noqa: BLE001
+        return False, f"Avatar enviado, mas falhou ao salvar perfil: {exc}"
+
+    return True, avatar_path
+
+
+def supabase_read_avatar(user_id: str) -> bytes | None:
+    client = get_supabase_client()
+    if client is None:
+        return None
+
+    try:
+        response = client.table(SUPABASE_PROFILE_TABLE).select("avatar_path").eq("participant_id", user_id).limit(1).execute()
+        rows = response.data or []
+        if not rows:
+            return None
+        avatar_path = str(rows[0].get("avatar_path") or "").strip()
+        if not avatar_path:
+            return None
+        blob = client.storage.from_(supabase_bucket_name()).download(avatar_path)
+        return bytes(blob)
+    except Exception:
+        return None
 
 
 def ensure_assets() -> None:
@@ -62,6 +149,10 @@ def avatar_path_for_user(user_id: str) -> Path:
 
 
 def read_avatar(user_id: str) -> bytes:
+    supabase_avatar = supabase_read_avatar(user_id)
+    if supabase_avatar is not None:
+        return supabase_avatar
+
     path = avatar_path_for_user(user_id)
     if path.exists():
         return path.read_bytes()
@@ -397,32 +488,38 @@ def app() -> None:
 
     user_id = current_user_id()
     user_name = current_user_name()
+    avatar_bytes = read_avatar(user_id)
 
     icon_title("fa-trophy", "BOTao da Copa 2026", "Painel do participante")
 
     c_avatar, c_user = st.columns([1, 3])
     with c_avatar:
-        avatar_bytes = read_avatar(user_id)
-        st.image(avatar_bytes, width=72)
+        st.image(avatar_bytes, width=88)
     with c_user:
         st.markdown(
             f"""
             <div class="avatar-wrap">
-              <i class="fa-solid fa-user"></i>
-              <div><strong>{user_name}</strong><br/><span style="color:#64758b;font-size:.9rem;">ID: {user_id}</span></div>
+              <i class="fa-solid fa-circle-user"></i>
+                            <div><strong>{user_name}</strong><br/><span style="color:#64758b;font-size:.9rem;">Participante identificado automaticamente</span></div>
             </div>
             """,
             unsafe_allow_html=True,
         )
 
-    upload = st.file_uploader("Atualizar foto de perfil", type=["png", "jpg", "jpeg"], help="A imagem será usada no ranking e nos cards compartilháveis.")
+    upload = st.file_uploader(
+        "Atualizar foto de perfil",
+        type=["png", "jpg", "jpeg"],
+        help="A imagem será usada no ranking, desempenho e cards compartilháveis.",
+    )
     if upload is not None:
-        save_avatar(user_id, upload.getvalue())
-        st.success("Foto de perfil atualizada.")
+        uploaded_bytes = upload.getvalue()
+        save_avatar(user_id, uploaded_bytes)
+        ok, message = supabase_store_avatar(user_id, user_name, uploaded_bytes, upload.type or "image/png")
+        if ok:
+            st.success("Foto de perfil atualizada e sincronizada.")
+        else:
+            st.warning(f"Foto salva localmente, mas a sincronização não concluiu: {message}")
         avatar_bytes = read_avatar(user_id)
-
-    if not supabase_enabled():
-        st.info("Avatar em armazenamento local. Para persistência em nuvem, configure Supabase (orientações no final desta resposta).")
 
     ranking_items, ranking_err = safe_fetch(api_base_url, timeout_seconds, "/ranking", "ranking")
     predictions_items, pred_err = safe_fetch(api_base_url, timeout_seconds, "/predictions", "predictions")
@@ -449,7 +546,8 @@ def app() -> None:
     my_predictions = predictions_view[predictions_view["participantId"].astype(str) == str(user_id)].copy() if not predictions_view.empty else pd.DataFrame()
 
     m1, m2, m3, m4 = st.columns(4)
-    metric_html("Participantes", ranking_df["participantId"].nunique() if not ranking_df.empty else 0)
+    with m1:
+        metric_html("Participantes", ranking_df["participantId"].nunique() if not ranking_df.empty else 0)
     with m2:
         metric_html("Seus palpites", len(my_predictions))
     with m3:
@@ -551,20 +649,17 @@ def app() -> None:
             rank = ranking_df.sort_values(by="position").copy()
             top3 = rank.head(3)
 
-            st.markdown('<div class="podium">', unsafe_allow_html=True)
             for _, row in top3.iterrows():
                 pid = str(row.get("participantId", ""))
                 pname = str(row.get("name") or pid)
                 photo = read_avatar(pid)
-                b64 = BytesIO(photo)
                 st.markdown('<div class="podium-card">', unsafe_allow_html=True)
-                st.image(b64, width=48)
+                st.image(photo, width=56)
                 st.markdown(
                     f"**{int(row.get('position', 0))}º lugar · {pname}**  \\n{int(row.get('totalPoints', 0))} pontos",
                     unsafe_allow_html=False,
                 )
                 st.markdown("</div>", unsafe_allow_html=True)
-            st.markdown("</div>", unsafe_allow_html=True)
 
             show = rank[["position", "name", "totalPoints"]].rename(
                 columns={"position": "Posição", "name": "Participante", "totalPoints": "Pontos"}

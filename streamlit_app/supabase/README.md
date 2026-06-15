@@ -1,21 +1,26 @@
 # Supabase para Avatar de Participantes
 
-Este diretório centraliza a estrutura para persistir avatar de usuário no Supabase.
+Este diretório documenta a persistência do avatar e do perfil do participante no Supabase.
 
-## 1) Criar projeto no Supabase
-1. Acesse https://supabase.com/dashboard/projects
-2. Clique em `New project`
-3. Escolha organização, nome (ex: `botao-copa-avatars`) e senha forte para o banco.
-4. Aguarde provisionamento.
+## O que já está implementado
+- Upload da foto do participante para o bucket `avatars`.
+- Gravação/atualização do perfil na tabela `participant_profiles`.
+- Leitura prioritária do avatar no Supabase, com fallback local em `streamlit_app/assets/avatars/`.
 
-## 2) Criar bucket de storage
-1. No menu do projeto, abra `Storage`.
-2. Clique em `New bucket`.
-3. Nome sugerido: `avatars`.
-4. Defina como `Private`.
+## Estrutura esperada no Supabase
+### 1) Projeto
+Use o projeto com o `Project ID` exibido no dashboard.
+A URL no `.env` deve seguir o formato:
 
-## 3) Criar tabela de perfis
-No `SQL Editor`, execute:
+```toml
+SUPABASE_URL = "https://<project-id>.supabase.co"
+```
+
+### 2) Bucket
+Crie um bucket privado chamado `avatars`.
+
+### 3) Tabela
+No SQL Editor, execute:
 
 ```sql
 create table if not exists participant_profiles (
@@ -26,22 +31,23 @@ create table if not exists participant_profiles (
 );
 ```
 
-## 4) Políticas sugeridas (MVP)
-Para backend/serviço usando service role key, pode iniciar sem RLS para simplificar.
-Se quiser habilitar RLS depois, criar policies específicas.
-
-## 5) Secrets no Streamlit Cloud
-Adicionar em `Secrets`:
+### 4) Secrets / .env
+Adicione estes valores no `.env` local e também nos Secrets do Streamlit Cloud:
 
 ```toml
 API_BASE_URL = "https://botao-da-copa-api.onrender.com"
 CURRENT_USER_ID = "1"
 CURRENT_USER_NAME = "Oliveira"
-SUPABASE_URL = "https://SEU-PROJETO.supabase.co"
-SUPABASE_SERVICE_ROLE_KEY = "SUA_SERVICE_ROLE_KEY"
+SUPABASE_URL = "https://<project-id>.supabase.co"
+SUPABASE_SERVICE_ROLE_KEY = "<service_role_secret>"
 SUPABASE_BUCKET = "avatars"
 ```
 
-## 6) Observação
-Nesta etapa, o app já funciona com fallback local em `streamlit_app/assets/avatars/`.
-Quando os secrets acima forem adicionados, podemos ativar sincronização total no Supabase.
+## Fluxo do app
+1. O app identifica o participante via `CURRENT_USER_ID` e `CURRENT_USER_NAME`.
+2. No upload da imagem, salva localmente e envia para o bucket `avatars`.
+3. O perfil é atualizado na tabela `participant_profiles`.
+4. Nas próximas leituras, o app busca o avatar no Supabase primeiro.
+
+## Observação importante
+Se a `service_role key` foi exibida em print/chat, gere uma nova chave no Supabase antes de seguir para produção.
