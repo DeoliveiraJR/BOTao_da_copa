@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from io import BytesIO
+import base64
 import os
 from pathlib import Path
 from typing import Any
@@ -277,6 +278,65 @@ def apply_css() -> None:
             padding: 12px;
         }
 
+        .result-card {
+            background: linear-gradient(180deg, #ffffff 0%, #fbfcfe 100%);
+            border: 1px solid var(--line);
+            border-radius: 16px;
+            padding: 14px 14px 12px 14px;
+            margin-bottom: 12px;
+            box-shadow: 0 4px 14px rgba(17, 24, 39, 0.04);
+        }
+
+        .result-card-title {
+            font-weight: 700;
+            font-size: 1rem;
+            color: var(--text);
+            margin-bottom: 4px;
+        }
+
+        .result-card-subtitle {
+            color: var(--muted);
+            font-size: .88rem;
+            margin-bottom: 10px;
+        }
+
+        .result-card-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+        }
+
+        .table-chip {
+            background: var(--surface-2);
+            border: 1px solid var(--line);
+            border-radius: 12px;
+            padding: 10px 12px;
+        }
+
+        .table-chip-label {
+            display: block;
+            color: var(--muted);
+            font-size: .74rem;
+            text-transform: uppercase;
+            letter-spacing: .06em;
+            margin-bottom: 4px;
+        }
+
+        .table-chip-value {
+            color: var(--text);
+            font-weight: 600;
+        }
+
+        .table-chip-status {
+            margin-top: 10px;
+        }
+
+        @media (max-width: 720px) {
+            .result-card-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
         @media (min-width: 900px) {
             .podium {
                 grid-template-columns: repeat(3, 1fr);
@@ -375,6 +435,34 @@ def reason_tag(reason: str) -> str:
     return '<span class="status-tag status-live"><i class="fa-solid fa-hourglass-half"></i> Em andamento</span>'
 
 
+def game_status_tag(status: str | None) -> str:
+    value = str(status or "").lower().strip()
+    if value == "finished":
+        return '<span class="status-tag status-exact"><i class="fa-solid fa-flag-checkered"></i> Finalizado</span>'
+    if value == "in_progress":
+        return '<span class="status-tag status-live"><i class="fa-solid fa-circle-play"></i> Em andamento</span>'
+    return '<span class="status-tag status-outcome"><i class="fa-solid fa-calendar-day"></i> Agendado</span>'
+
+
+def render_table_card(title: str, subtitle: str, columns: list[str], values: list[str], status_html: str | None = None) -> None:
+    cols_html = "".join(
+        f'<div class="table-chip"><span class="table-chip-label">{col}</span><div class="table-chip-value">{val}</div></div>'
+        for col, val in zip(columns, values, strict=False)
+    )
+    status_block = f'<div class="table-chip-status">{status_html}</div>' if status_html else ""
+    st.markdown(
+        f"""
+        <div class="result-card">
+          <div class="result-card-title">{title}</div>
+          <div class="result-card-subtitle">{subtitle}</div>
+          <div class="result-card-grid">{cols_html}</div>
+          {status_block}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def join_predictions_with_game_and_result(predictions_df: pd.DataFrame, games_df: pd.DataFrame, results_df: pd.DataFrame) -> pd.DataFrame:
     if predictions_df.empty:
         return predictions_df
@@ -432,40 +520,54 @@ def chart_status_counts(df: pd.DataFrame) -> pd.DataFrame:
     return status
 
 
+def create_share_background(width: int = 1400, height: int = 1400) -> Image.Image:
+    img = Image.new("RGB", (width, height), "#0c1730")
+    draw = ImageDraw.Draw(img)
+
+    # pitch-inspired grid and diagonal accents
+    for x in range(0, width, 80):
+        draw.line((x, 0, x, height), fill="#19335e", width=1)
+    for y in range(0, height, 80):
+        draw.line((0, y, width, y), fill="#19335e", width=1)
+    for x in range(-200, width + 200, 180):
+        draw.polygon([(x, 0), (x + 120, 0), (x + 40, 160), (x - 80, 160)], fill="#143055")
+
+    draw.rounded_rectangle((40, 40, width - 40, height - 40), radius=28, fill="#111f3f", outline="#7cf0ff", width=4)
+    draw.rounded_rectangle((70, 70, width - 70, 220), radius=18, fill="#f5d86b", outline="#ffffff", width=3)
+    return img
+
+
 def make_share_card(title: str, subtitle: str, lines: list[str], avatar: bytes | None = None) -> bytes:
-    width, height = 1200, 1200
-    img = Image.new("RGB", (width, height), "#f7f0d8")
+    width, height = 1400, 1400
+    img = create_share_background(width, height)
     draw = ImageDraw.Draw(img)
     f_title = ImageFont.load_default()
     f_text = ImageFont.load_default()
 
-    # background pattern simple grid + balls
-    for x in range(0, width, 60):
-        draw.line((x, 0, x, height), fill="#e8ddbe", width=1)
-    for y in range(0, height, 60):
-        draw.line((0, y, width, y), fill="#e8ddbe", width=1)
-    for i in range(10):
-        cx = 80 + i * 110
-        draw.ellipse((cx, 980, cx + 22, 1002), outline="#315a8c", width=2)
+    draw.text((110, 104), title, fill="#0c1730", font=f_title)
+    draw.text((110, 146), subtitle, fill="#1b2f59", font=f_text)
 
-    draw.rounded_rectangle((40, 40, width - 40, height - 40), radius=26, outline="#1e3557", width=4, fill="#fffdf7")
-    draw.rounded_rectangle((70, 70, width - 70, 220), radius=14, fill="#f4df8c", outline="#1e3557", width=3)
+    # scoreboard band
+    draw.rounded_rectangle((80, 260, width - 80, 540), radius=22, fill="#0f2a4d", outline="#7cf0ff", width=3)
+    draw.text((110, 290), "Tabela em destaque", fill="#7cf0ff", font=f_text)
 
-    draw.text((95, 100), title, fill="#16202a", font=f_title)
-    draw.text((95, 136), subtitle, fill="#4b5a6b", font=f_text)
+    y = 330
+    for line in lines[:12]:
+        draw.rounded_rectangle((110, y, width - 110, y + 58), radius=10, fill="#f9f4de", outline="#c9b45b", width=2)
+        draw.text((132, y + 18), line, fill="#0c1730", font=f_text)
+        y += 74
 
-    y = 260
-    for line in lines[:18]:
-        draw.text((100, y), line, fill="#1f2933", font=f_text)
-        y += 44
+    # side trophy / crest and avatar circle
+    draw.ellipse((1060, 620, 1290, 850), fill="#f5d86b", outline="#ffffff", width=4)
+    draw.text((1130, 702), "🏆", fill="#0c1730", font=f_title)
 
     if avatar:
         try:
             av = Image.open(BytesIO(avatar)).convert("RGB").resize((140, 140))
             mask = Image.new("L", (140, 140), 0)
             ImageDraw.Draw(mask).ellipse((0, 0, 140, 140), fill=255)
-            img.paste(av, (width - 220, height - 220), mask)
-            draw.ellipse((width - 220, height - 220, width - 80, height - 80), outline="#1e3557", width=4)
+            img.paste(av, (width - 230, height - 230), mask)
+            draw.ellipse((width - 230, height - 230, width - 90, height - 90), outline="#7cf0ff", width=4)
         except Exception:
             pass
 
@@ -603,7 +705,6 @@ def app() -> None:
         if my_predictions.empty:
             st.info("Você ainda não possui palpites registrados.")
         else:
-            # filtros multi
             all_matches = sorted(my_predictions["match"].dropna().astype(str).unique().tolist())
             all_dates = sorted(my_predictions["gameDate"].dropna().astype(str).unique().tolist())
 
@@ -620,26 +721,14 @@ def app() -> None:
                 filtered = filtered[filtered["gameDate"].isin(selected_dates)]
 
             st.caption(f"Total exibido: {len(filtered)}")
-            base = filtered[["match", "gameDate", "prediction", "statusTag", "updatedAt"]].copy()
-            base["updatedAt"] = base["updatedAt"].apply(fmt_dt)
-            base = base.rename(
-                columns={
-                    "match": "Partida",
-                    "gameDate": "Data",
-                    "prediction": "Palpite",
-                    "statusTag": "Status",
-                    "updatedAt": "Atualizado",
-                }
-            )
-
-            # tabela com status html
-            for _, row in base.iterrows():
-                c1, c2, c3, c4 = st.columns([3, 1, 1, 2])
-                c1.write(row["Partida"])
-                c2.write(row["Data"])
-                c3.write(row["Palpite"])
-                with c4:
-                    render_status_cell(str(row["Status"]))
+            for _, row in filtered.sort_values(by=["gameDate", "match"]).iterrows():
+                render_table_card(
+                    title=f"{row['match']}",
+                    subtitle=row.get("gameDateTime", row.get("gameDate", "")),
+                    columns=["Palpite", "Atualizado"],
+                    values=[str(row.get("prediction", "")), fmt_dt(row.get("updatedAt"))],
+                    status_html=str(row.get("statusTag", "")),
+                )
 
     with tab_ranking:
         icon_title("fa-ranking-star", "Ranking", "Classificação geral")
@@ -649,17 +738,24 @@ def app() -> None:
             rank = ranking_df.sort_values(by="position").copy()
             top3 = rank.head(3)
 
-            for _, row in top3.iterrows():
+            podium_cols = st.columns(3)
+            for idx, (_, row) in enumerate(top3.iterrows()):
                 pid = str(row.get("participantId", ""))
                 pname = str(row.get("name") or pid)
                 photo = read_avatar(pid)
-                st.markdown('<div class="podium-card">', unsafe_allow_html=True)
-                st.image(photo, width=56)
-                st.markdown(
-                    f"**{int(row.get('position', 0))}º lugar · {pname}**  \\n{int(row.get('totalPoints', 0))} pontos",
-                    unsafe_allow_html=False,
-                )
-                st.markdown("</div>", unsafe_allow_html=True)
+                with podium_cols[idx]:
+                    st.markdown(
+                        f"""
+                        <div class="podium-card">
+                        <img src="data:image/png;base64,{base64.b64encode(photo).decode()}" style="width:72px;height:72px;border-radius:50%;object-fit:cover;border:3px solid #7cf0ff;" />
+                          <div>
+                            <div style="font-weight:700;font-size:1.05rem;">{int(row.get('position', 0))}º {pname}</div>
+                            <div style="color:#64758b;">{int(row.get('totalPoints', 0))} pontos</div>
+                          </div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
 
             show = rank[["position", "name", "totalPoints"]].rename(
                 columns={"position": "Posição", "name": "Participante", "totalPoints": "Pontos"}
@@ -675,9 +771,28 @@ def app() -> None:
             game_name = games_df[["id", "homeTeam", "awayTeam", "dateTime"]].rename(columns={"id": "gameId"}) if not games_df.empty else pd.DataFrame(columns=["gameId", "homeTeam", "awayTeam", "dateTime"])
             results_use = results_use.merge(game_name, on="gameId", how="left")
             results_use["Partida"] = results_use.apply(lambda r: f"{r.get('homeTeam', 'A')} x {r.get('awayTeam', 'B')}", axis=1)
-            results_use["Data"] = results_use["dateTime"].apply(fmt_dt)
+            results_use["Data"] = results_use["dateTime"].apply(fmt_date)
             results_use["Placar"] = results_use.apply(lambda r: f"{int(r.get('homeGoalsManual', 0))} x {int(r.get('awayGoalsManual', 0))}", axis=1)
-            st.dataframe(results_use[["Partida", "Data", "Placar", "reconciliationStatus"]], use_container_width=True, hide_index=True)
+
+            my_result_status = None
+            if not my_predictions.empty:
+                result_map = my_predictions.groupby("gameId")["statusReason"].first().to_dict()
+                results_use["Status do palpite"] = results_use["gameId"].map(
+                    lambda gid: {
+                        "exact": "Acertou",
+                        "outcome": "Acertou vencedor",
+                        "miss": "Errou",
+                        "live": "Em andamento",
+                    }.get(result_map.get(str(gid), "live"), "Em andamento")
+                )
+            else:
+                results_use["Status do palpite"] = "Em andamento"
+
+            st.dataframe(
+                results_use[["Partida", "Data", "Placar", "Status do palpite", "reconciliationStatus"]],
+                use_container_width=True,
+                hide_index=True,
+            )
 
     with tab_performance:
         icon_title("fa-chart-line", "Desempenho", "Indicadores do seu histórico")
@@ -738,7 +853,14 @@ def app() -> None:
         perf_lines = []
         if not my_predictions.empty:
             for _, row in my_predictions.head(12).iterrows():
-                perf_lines.append(f"{row.get('match', '')} · {row.get('prediction', '')}")
+                perf_lines.append(f"{row.get('match', '')} · {row.get('prediction', '')} · {str(row.get('statusReason', 'live')).upper()}")
+
+        rodada_lines = []
+        if not my_predictions.empty:
+            rodada_lines = [
+                f"{row.get('match', '')} | {row.get('prediction', '')}"
+                for _, row in my_predictions.sort_values(by=["gameDate", "match"]).head(8).iterrows()
+            ]
 
         perf_card = make_share_card(
             "Desempenho",
@@ -751,6 +873,21 @@ def app() -> None:
             "Baixar card de desempenho",
             data=perf_card,
             file_name="desempenho-bolao.png",
+            mime="image/png",
+            use_container_width=True,
+        )
+
+        rodada_card = make_share_card(
+            "Palpites da Rodada",
+            datetime.now().strftime("%d/%m/%Y"),
+            rodada_lines or ["Sem palpites para exibir"],
+            avatar_bytes,
+        )
+        st.image(rodada_card, use_container_width=True)
+        st.download_button(
+            "Baixar card da rodada",
+            data=rodada_card,
+            file_name="palpites-rodada.png",
             mime="image/png",
             use_container_width=True,
         )
