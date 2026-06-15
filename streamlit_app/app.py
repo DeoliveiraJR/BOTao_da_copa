@@ -391,6 +391,20 @@ def fmt_date(value: Any) -> str:
     return dt.tz_convert("America/Sao_Paulo").strftime("%d/%m/%Y")
 
 
+def to_sp_datetime(value: Any) -> pd.Timestamp | None:
+    if value is None or value == "":
+        return None
+    dt = pd.to_datetime(value, errors="coerce", utc=True)
+    if pd.isna(dt):
+        return None
+    return dt.tz_convert("America/Sao_Paulo")
+
+
+def sp_today_start() -> pd.Timestamp:
+    now = pd.Timestamp.now(tz="America/Sao_Paulo")
+    return now.normalize()
+
+
 def api_get(base_url: str, timeout_seconds: int, path: str) -> dict[str, Any]:
     response = requests.get(f"{base_url}{path}", timeout=timeout_seconds)
     response.raise_for_status()
@@ -639,6 +653,26 @@ def app() -> None:
     predictions_df = to_df(predictions_items)
     results_df = to_df(results_items)
     games_df = to_df(games_items)
+    is_admin = user_name.strip().lower() == "oliveira"
+
+    confirmed_game_ids: set[str] = set()
+    if not results_df.empty and {"gameId", "homeGoalsManual", "awayGoalsManual"}.issubset(results_df.columns):
+        done_rows = results_df[
+            results_df["homeGoalsManual"].notna() & results_df["awayGoalsManual"].notna()
+        ]
+        confirmed_game_ids = set(done_rows["gameId"].astype(str).tolist())
+
+    eligible_games_df = pd.DataFrame()
+    if not games_df.empty and {"id", "dateTime", "status"}.issubset(games_df.columns):
+        _g = games_df.copy()
+        _g["dateTimeSp"] = _g["dateTime"].apply(to_sp_datetime)
+        today_start = sp_today_start()
+        eligible_games_df = _g[
+            _g["dateTimeSp"].notna()
+            & (_g["dateTimeSp"] >= today_start)
+            & (_g["status"].astype(str).str.lower() != "finished")
+            & (~_g["id"].astype(str).isin(confirmed_game_ids))
+        ].sort_values(by="dateTimeSp")
 
     name_map = participant_name_map(ranking_df)
     predictions_view = join_predictions_with_game_and_result(predictions_df, games_df, results_df)
@@ -664,12 +698,12 @@ def app() -> None:
     with tab_predictions:
         icon_title("fa-pen-to-square", "Palpites", "Envio e consulta")
 
-        if games_df.empty:
-            st.warning("Nenhuma partida disponível para palpite.")
+        if eligible_games_df.empty:
+            st.warning("Nenhuma partida disponível para palpite no momento.")
         else:
             # Inserção de palpite pelo usuário
             with st.form("insert_prediction", border=True):
-                game_options = games_df.copy()
+                game_options = eligible_games_df.copy()
                 game_options["label"] = game_options.apply(
                     lambda r: f"{r.get('homeTeam', 'A')} x {r.get('awayTeam', 'B')} — {fmt_dt(r.get('dateTime'))}", axis=1
                 )
@@ -721,7 +755,11 @@ def app() -> None:
                 filtered = filtered[filtered["gameDate"].isin(selected_dates)]
 
             st.caption(f"Total exibido: {len(filtered)}")
-            for _, row in filtered.sort_values(by=["gameDate", "match"]).iterrows():
+            filtered = filtered.copy()
+            filtered["updatedAtOrder"] = pd.to_datetime(filtered["updatedAt"], errors="coerce", utc=True)
+            filtered = filtered.sort_values(by="updatedAtOrder", ascending=False)
+
+            for _, row in filtered.iterrows():
                 render_table_card(
                     title=f"{row['match']}",
                     subtitle=row.get("gameDateTime", row.get("gameDate", "")),
@@ -764,6 +802,49 @@ def app() -> None:
 
     with tab_results:
         icon_title("fa-futbol", "Resultados", "Partidas confirmadas")
+
+        if is_admin:
+            st.markdown("### Atualização manual de resultados")
+            pending_for_result = eligible_games_df.copy() if not eligible_games_df.empty else pd.DataFrame()
+            if pending_for_result.empty:
+                st.info("Sem partidas pendentes para atualização manual no momento.")
+            else:
+                with st.form("update_result_admin", border=True):
+                    pending_for_result["label"] = pending_for_result.apply(
+                        lambda r: f"{r.get('homeTeam', 'A')} x {r.get('awayTeam', 'B')} — {fmt_dt(r.get('dateTime'))}",
+                        axis=1,
+                    )
+                    selected_label = st.selectbox("Partida para atualizar resultado", pending_for_result["label"].tolist())
+                    selected_result_game = pending_for_result[pending_for_result["label"] == selected_label].iloc[0]
+
+                    rc1, rc2 = st.columns(2)
+                    with rc1:
+                        home_result = st.number_input("Gols mandante (resultado)", min_value=0, max_value=20, value=1, step=1)
+                    with rc2:
+                        away_result = st.number_input("Gols visitante (resultado)", min_value=0, max_value=20, value=0, step=1)
+
+                    recon_status = st.selectbox("Status de reconciliação", ["confirmed", "pending", "conflict"], index=0)
+                    save_result_btn = st.form_submit_button("Salvar resultado e recalcular ranking", type="primary", use_container_width=True)
+
+                    if save_result_btn:
+                        try:
+                            api_post(
+                                api_base_url,
+                                timeout_seconds,
+                                "/results",
+                                {
+                                    "gameId": str(selected_result_game.get("id")),
+                                    "homeGoalsManual": int(home_result),
+                                    "awayGoalsManual": int(away_result),
+                                    "reconciliationStatus": recon_status,
+                                },
+                            )
+                            api_post(api_base_url, timeout_seconds, "/ranking/consolidate", {})
+                            st.success("Resultado salvo e ranking recalculado com sucesso.")
+                            st.rerun()
+                        except Exception as exc:  # noqa: BLE001
+                            st.error(f"Falha ao atualizar resultado: {exc}")
+
         if results_df.empty:
             st.info("Sem resultados confirmados.")
         else:
@@ -788,8 +869,16 @@ def app() -> None:
             else:
                 results_use["Status do palpite"] = "Em andamento"
 
+            results_use["Status do jogo"] = results_use["reconciliationStatus"].astype(str).map(
+                {
+                    "confirmed": "Confirmado",
+                    "pending": "Pendente",
+                    "conflict": "Conflito",
+                }
+            ).fillna(results_use["reconciliationStatus"].astype(str))
+
             st.dataframe(
-                results_use[["Partida", "Data", "Placar", "Status do palpite", "reconciliationStatus"]],
+                results_use[["Partida", "Data", "Placar", "Status do palpite", "Status do jogo"]],
                 use_container_width=True,
                 hide_index=True,
             )
