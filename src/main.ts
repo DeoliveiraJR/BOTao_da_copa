@@ -4,6 +4,7 @@ import { listConfiguredBoloes, resolveSpreadsheetIdForBolao } from "./config/bol
 import { consolidateRanking, getRanking } from "./domain/rankingService.js";
 import { createGameRepository, createPredictionRepository, createResultRepository } from "./sheets/predictionRepositoryFactory.js";
 import { listPredictions } from "./sheets/sheetsService.js";
+import { resolveParticipantMemberships } from "./whatsapp/participantResolver.js";
 import { whatsappRouter } from "./whatsapp/webhookRouter.js";
 import { twilioRouter } from "./whatsapp/twilioRouter.js";
 
@@ -79,6 +80,27 @@ app.get("/boloes", (_req, res) => {
 
   const boloes = listConfiguredBoloes().map((item) => ({ id: item.id, name: item.name }));
   return res.status(200).json({ ok: true, defaultBolaoId: env.BOLAO_DEFAULT_ID, count: boloes.length, boloes });
+});
+
+app.get("/participant/memberships", async (req, res) => {
+  const participantId = asString(req.query?.participantId);
+  if (!participantId) {
+    return res.status(400).json({ ok: false, error: "participantId é obrigatório" });
+  }
+
+  const memberships = await resolveParticipantMemberships(participantId);
+  return res.status(200).json({
+    ok: true,
+    participantId,
+    count: memberships.length,
+    memberships: memberships.map((item) => ({
+      participantId: item.participantId,
+      name: item.name,
+      bolaoId: item.bolaoId,
+      bolaoName: item.bolaoName,
+      whatsappE164: item.whatsappE164,
+    })),
+  });
 });
 
 app.get("/predictions", async (req, res) => {

@@ -55,6 +55,13 @@ def current_bolao_id() -> str:
     return os.getenv("CURRENT_BOLAO_ID", "").strip()
 
 
+def query_param_value(key: str) -> str:
+    raw = st.query_params.get(key, "")
+    if isinstance(raw, list):
+        return str(raw[0] if raw else "").strip()
+    return str(raw or "").strip()
+
+
 def env_value(key: str, default: str = "") -> str:
     if key in st.secrets:
         value = st.secrets[key]
@@ -437,6 +444,22 @@ def safe_fetch(base_url: str, timeout_seconds: int, path: str, fallback_key: str
         return [], str(exc)
 
 
+def fetch_user_memberships(base_url: str, timeout_seconds: int, participant_id: str) -> tuple[list[dict[str, Any]], str | None]:
+    if not participant_id:
+        return [], "participantId vazio"
+    try:
+        response = requests.get(
+            f"{base_url}/participant/memberships",
+            params={"participantId": participant_id},
+            timeout=timeout_seconds,
+        )
+        response.raise_for_status()
+        data = response.json()
+        return data.get("memberships", []), None
+    except Exception as exc:  # noqa: BLE001
+        return [], str(exc)
+
+
 def to_df(items: list[dict[str, Any]]) -> pd.DataFrame:
     return pd.DataFrame(items) if items else pd.DataFrame()
 
@@ -677,9 +700,9 @@ def app() -> None:
     timeout_seconds = 8
     st.session_state["api_base_url"] = api_base_url
 
-    user_id = current_user_id()
-    user_name = current_user_name()
-    preferred_bolao_id = current_bolao_id()
+    user_id = query_param_value("user") or current_user_id()
+    user_name = query_param_value("name") or current_user_name()
+    preferred_bolao_id = query_param_value("bolaoId") or current_bolao_id()
     avatar_bytes = read_avatar(user_id)
 
     icon_title("fa-trophy", "BOTao da Copa 2026", "Painel do participante")
@@ -724,8 +747,18 @@ def app() -> None:
         if str(item.get("id", "")).strip()
     ]
 
+    memberships, memberships_err = fetch_user_memberships(api_base_url, timeout_seconds, user_id)
+    if memberships_err:
+        st.warning("Não foi possível validar acesso por participante. Exibindo todos os bolões configurados.")
+    elif memberships:
+        allowed_ids = {str(item.get("bolaoId", "")).strip() for item in memberships if str(item.get("bolaoId", "")).strip()}
+        boloes = [b for b in boloes if b["id"] in allowed_ids]
+        detected_name = str(memberships[0].get("name", "")).strip()
+        if detected_name:
+            user_name = detected_name
+
     if not boloes:
-        st.error("Nenhum bolão configurado na API. Configure BOLAO_SPREADSHEET_MAP ou GOOGLE_SHEETS_SPREADSHEET_ID.")
+        st.error("Nenhum bolão disponível para este participante. Verifique o cadastro na aba Participantes das planilhas.")
         return
 
     bolao_ids = [b["id"] for b in boloes]

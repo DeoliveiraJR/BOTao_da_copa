@@ -132,6 +132,7 @@ export type Intent =
   | "prediction"
   | "ranking"
   | "games"
+  | "report"
   | "help"
   | "panel"
   | "oi"
@@ -141,6 +142,7 @@ export type Intent =
 
 const RANKING_PATTERNS = /^(1|ranking|classifica[cç][aã]o|pontos?)$/i;
 const GAMES_PATTERNS = /^(2|jogos?|partidas?|hoje|proximos?)$/i;
+const REPORT_PATTERNS = /^(7|relatorio|relatório|status do dia|quem palpitou|palpites do dia)$/i;
 const RESUMO_PATTERNS = /^(3|resumo|rodada|resumo da rodada|sintese|resultado da rodada)$/i;
 const PANEL_PATTERNS = /^(4|painel|dashboard|link|placar online|acompanhar)$/i;
 const HELP_PATTERNS = /^(5|ajuda|help|\?)$/i;
@@ -152,6 +154,7 @@ export function detectIntent(text: string): Intent {
   const payload = predictionPayload(normalized);
   if (RANKING_PATTERNS.test(normalized)) return "ranking";
   if (GAMES_PATTERNS.test(normalized)) return "games";
+  if (REPORT_PATTERNS.test(normalized)) return "report";
   if (RESUMO_PATTERNS.test(normalized)) return "resumo";
   if (PANEL_PATTERNS.test(normalized)) return "panel";
   if (HELP_PATTERNS.test(normalized)) return "help";
@@ -267,6 +270,79 @@ async function handleGames(bolaoId?: string): Promise<string> {
     "",
     "Pra palpitar: *TIME A NxM TIME B*",
     "Pra corrigir erro de digitacao: *alterar TIME A NxM TIME B*",
+  ].join("\n");
+}
+
+function normalizeGameId(value: unknown): string {
+  const text = String(value ?? "").trim();
+  if (/^\d+\.0$/.test(text)) return text.slice(0, -2);
+  return text;
+}
+
+async function handleDailyReport(bolaoId?: string): Promise<string> {
+  const { predictionRepo, gameRepo } = reposForBolao(bolaoId);
+  const [predictions, games, ranking] = await Promise.all([
+    predictionRepo.listPredictions(),
+    gameRepo.listGames(),
+    getRanking(bolaoId),
+  ]);
+
+  const todayKey = toSaoPauloDateKey(new Date());
+  const rankingNameMap = new Map(ranking.map((item) => [item.participantId, item.name] as const));
+  const gameMap = new Map(games.map((g) => [normalizeGameId(g.id), g] as const));
+
+  const todayPredictions = predictions.filter((item) => {
+    if (item.isDeleted) return false;
+    const createdAt = new Date(item.createdAt);
+    if (Number.isNaN(createdAt.getTime())) return false;
+    return toSaoPauloDateKey(createdAt) === todayKey;
+  });
+
+  if (todayPredictions.length === 0) {
+    return [
+      "🗂️ *Relatório de Palpites do Dia*",
+      "",
+      "Ainda não há palpites registrados hoje.",
+    ].join("\n");
+  }
+
+  const summary = new Map<string, { name: string; count: number; matches: string[] }>();
+  for (const prediction of todayPredictions) {
+    const participantId = String(prediction.participantId);
+    const current = summary.get(participantId) ?? {
+      name: rankingNameMap.get(participantId) ?? participantId,
+      count: 0,
+      matches: [],
+    };
+
+    const game = gameMap.get(normalizeGameId(prediction.gameId));
+    const matchLabel = game
+      ? `${game.homeTeam} x ${game.awayTeam}`
+      : `${prediction.homeTeam} x ${prediction.awayTeam}`;
+
+    current.count += 1;
+    if (!current.matches.includes(matchLabel)) {
+      current.matches.push(matchLabel);
+    }
+    summary.set(participantId, current);
+  }
+
+  const participantLines = Array.from(summary.values())
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
+    .map((entry) => {
+      const previewMatches = entry.matches.slice(0, 3).join(", ");
+      const extra = entry.matches.length > 3 ? ` +${entry.matches.length - 3}` : "";
+      return `• ${entry.name}: ${entry.count} palpite(s) — ${previewMatches}${extra}`;
+    });
+
+  return [
+    "🗂️ *Relatório de Palpites do Dia*",
+    `Data: ${new Date().toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })}`,
+    "",
+    ...participantLines,
+    "",
+    `Total de palpites hoje: *${todayPredictions.length}*`,
+    `Participantes ativos hoje: *${summary.size}*`,
   ].join("\n");
 }
 
@@ -387,56 +463,58 @@ async function handleSugestao(bolaoId?: string): Promise<string> {
   ].join("\n");
 }
 
-function handlePanel(bolaoId?: string): string {
-  const params = new URLSearchParams({ view: "painel" });
+function handlePanel(participantId: string, bolaoId?: string): string {
+  const params = new URLSearchParams({ view: "painel", user: participantId });
   if (bolaoId) params.set("bolaoId", bolaoId);
   return `📊 *Painel do Bolao*\n\nRanking, palpites e resultados em tempo real:\n${PANEL_URL}?${params.toString()}`;
 }
 
 function handleGreeting(): string {
   return [
-    "👋 Salve meu camarada, sou o *Milton Barata*.",
+    "🎩👋 Salve meu camarada, sou o *Milton Barata*.",
     "Com anos de larga experiencia em compliance e ouvidoria do jogo do bicho, ja fui caixeiro viajante e hoje assumo essa bodega.",
     "",
-    "Cuido do seu bolao no WhatsApp: registro palpite, atualizo ranking e trago o resumo da rodada.",
+    "📡 Cuido do seu bolão no WhatsApp: registro palpite, atualizo ranking e trago o resumo da rodada.",
     "",
-    "*Menu rapido (tambem funciona por numero):*",
-    "1 ou ranking      -> classificacao atual",
-    "2 ou jogos        -> jogos liberados para palpitar (proximo dia)",
-    "3 ou resumo       -> resumo da ultima rodada vigente",
-    "4 ou painel       -> link do painel online",
-    "5 ou ajuda        -> guia de comandos",
-    "6 ou oi           -> mostrar esta apresentacao",
-    "0 ou trocar bolao -> trocar o bolao ativo",
+    "*Menu Premium (também funciona por número):*",
+    "🥇 1 ou ranking      -> classificação atual",
+    "📅 2 ou jogos        -> jogos liberados para palpitar (próximo dia)",
+    "🧾 3 ou resumo       -> resumo da última rodada vigente",
+    "🖥️ 4 ou painel       -> link do painel online",
+    "🛟 5 ou ajuda        -> guia de comandos",
+    "🎙️ 6 ou oi           -> mostrar esta apresentação",
+    "📊 7 ou relatorio    -> quem já palpitou hoje",
+    "🔁 0 ou trocar bolao -> trocar o bolão ativo",
     "",
-    "Para palpitar: *Mexico 2x1 Africa do Sul*",
-    "Para corrigir: *alterar Mexico 2x1 Africa do Sul*",
-    "Se quiser um chute meu, envie *sugestao*.",
+    "✍️ Para palpitar: *Mexico 2x1 Africa do Sul*",
+    "🛠️ Para corrigir: *alterar Mexico 2x1 Africa do Sul*",
+    "🧠 Se quiser um chute meu, envie *sugestao*.",
   ].join("\n");
 }
 
 function handleHelp(): string {
   return [
-    "📘 *Ajuda - Milton Barata (BOTao da Copa 2026)*",
+    "📘 *Ajuda Oficial - Milton Barata (BOTao da Copa 2026)*",
     "",
     "*Comandos:*",
-    "1 ou ranking      -> ver classificacao",
-    "2 ou jogos        -> ver jogos liberados para palpitar (proximo dia)",
-    "3 ou resumo       -> resumo da rodada vigente",
-    "4 ou painel       -> abrir painel web",
-    "5 ou ajuda        -> voltar neste guia",
-    "6 ou oi           -> apresentacao do bot",
-    "0 ou trocar bolao -> selecionar outro bolao",
-    "sugestao          -> pitaco rapido do bot",
+    "🥇 1 ou ranking      -> ver classificação",
+    "📅 2 ou jogos        -> ver jogos liberados para palpitar (próximo dia)",
+    "🧾 3 ou resumo       -> resumo da rodada vigente",
+    "🖥️ 4 ou painel       -> abrir painel web",
+    "🛟 5 ou ajuda        -> voltar neste guia",
+    "🎙️ 6 ou oi           -> apresentação do bot",
+    "📊 7 ou relatorio    -> relatório diário de palpites",
+    "🔁 0 ou trocar bolao -> selecionar outro bolão",
+    "🧠 sugestao          -> pitaco rápido do bot",
     "",
     "*Para registrar palpite:*",
     "Use: *TIME A NxM TIME B*",
     "Ex: *Mexico 2x1 Africa do Sul*",
-    "Para corrigir: *alterar TIME A NxM TIME B* (so antes do jogo comecar)",
+    "Para corrigir: *alterar TIME A NxM TIME B* (só antes do jogo começar)",
     "",
-    "*Regras do bolao:*",
-    "• Hoje, so pode palpitar nos jogos do proximo dia",
-    "• 1 palpite por jogo (pode corrigir so antes do inicio)",
+    "*Regras do bolão:*",
+    "• Hoje, só pode palpitar nos jogos do próximo dia",
+    "• 1 palpite por jogo (pode corrigir só antes do início)",
     "• Placar exato = 3 pts",
     "• Resultado certo = 1 pt",
     "• Erro = 0 pt",
@@ -455,8 +533,9 @@ export async function processWhatsAppMessage(input: IncomingWhatsAppMessage): Pr
     case "prediction": return handlePrediction(input.participantId, input.text, input.bolaoId);
     case "ranking":    return handleRanking(input.bolaoId);
     case "games":      return handleGames(input.bolaoId);
+    case "report":     return handleDailyReport(input.bolaoId);
     case "resumo":     return handleResumo(input.bolaoId);
-    case "panel":      return handlePanel(input.bolaoId);
+    case "panel":      return handlePanel(input.participantId, input.bolaoId);
     case "help":       return handleHelp();
     case "oi":         return handleGreeting();
     case "sugestao":   return handleSugestao(input.bolaoId);

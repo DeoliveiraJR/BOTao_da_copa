@@ -8,6 +8,7 @@ export type ResolvedParticipant = {
   participantId: string;
   name: string;
   whatsappE164: string;
+  status: "ativo" | "inativo";
 };
 
 export type ResolvedParticipantBolao = ResolvedParticipant & {
@@ -48,9 +49,13 @@ async function loadParticipantsFromSpreadsheet(spreadsheetId: string): Promise<A
     const name = String(row[1] ?? "").trim();
     const whatsappE164 = normalizeWhatsApp(String(row[2] ?? ""));
     const status = String(row[3] ?? "ativo").trim().toLowerCase();
-    if (!participantId || !whatsappE164) return [];
-    if (status !== "ativo") return [];
-    return [{ participantId, name: name || participantId, whatsappE164 }];
+    if (!participantId) return [];
+    return [{
+      participantId,
+      name: name || participantId,
+      whatsappE164,
+      status: status === "ativo" ? "ativo" : "inativo",
+    }];
   });
 }
 
@@ -61,6 +66,7 @@ export async function resolveParticipantsByWhatsapp(phoneNumber: string): Promis
         participantId: phoneNumber.replace(/\D/g, "") || "unknown-user",
         name: phoneNumber,
         whatsappE164: normalizeWhatsApp(phoneNumber),
+        status: "ativo",
         bolaoId: env.BOLAO_DEFAULT_ID,
         bolaoName: env.BOLAO_DEFAULT_ID,
       },
@@ -73,7 +79,7 @@ export async function resolveParticipantsByWhatsapp(phoneNumber: string): Promis
     boloes.map(async (bolao) => {
       const participants = await loadParticipantsFromSpreadsheet(bolao.spreadsheetId);
       return participants
-        .filter((row) => row.whatsappE164 === target)
+        .filter((row) => row.status === "ativo" && row.whatsappE164 === target)
         .map((row) => ({
           ...row,
           bolaoId: bolao.id,
@@ -88,4 +94,38 @@ export async function resolveParticipantsByWhatsapp(phoneNumber: string): Promis
 export async function resolveParticipantByWhatsapp(phoneNumber: string): Promise<ResolvedParticipantBolao | null> {
   const memberships = await resolveParticipantsByWhatsapp(phoneNumber);
   return memberships[0] ?? null;
+}
+
+export async function resolveParticipantMemberships(participantId: string): Promise<ResolvedParticipantBolao[]> {
+  const target = String(participantId ?? "").trim();
+  if (!target) return [];
+
+  if (env.PERSISTENCE_PROVIDER !== "google_sheets") {
+    return [
+      {
+        participantId: target,
+        name: target,
+        whatsappE164: "",
+        status: "ativo",
+        bolaoId: env.BOLAO_DEFAULT_ID,
+        bolaoName: env.BOLAO_DEFAULT_ID,
+      },
+    ];
+  }
+
+  const boloes = listConfiguredBoloes();
+  const memberships = await Promise.all(
+    boloes.map(async (bolao) => {
+      const participants = await loadParticipantsFromSpreadsheet(bolao.spreadsheetId);
+      return participants
+        .filter((row) => row.status === "ativo" && String(row.participantId).trim() == target)
+        .map((row) => ({
+          ...row,
+          bolaoId: bolao.id,
+          bolaoName: bolao.name,
+        }));
+    }),
+  );
+
+  return memberships.flat();
 }
