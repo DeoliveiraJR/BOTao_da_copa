@@ -1,5 +1,6 @@
 import { Router } from "express";
-import { processWhatsAppMessage } from "./whatsappService.js";
+import { detectIntent, processWhatsAppMessage } from "./whatsappService.js";
+import { env } from "../config/env.js";
 import { resolveParticipantsByWhatsapp } from "./participantResolver.js";
 import {
   buildBolaoSelectionPrompt,
@@ -11,6 +12,8 @@ import {
 import { formatTwilioResponse, parseIncomingTwilioMessage } from "./twilioService.js";
 
 export const twilioRouter = Router();
+
+const SWITCH_BOLAO_PATTERN = /^(trocar\s*bolao|mudar\s*bolao|menu\s*bolao|bolao|0)$/i;
 
 /**
  * POST /twilio/webhook
@@ -44,14 +47,34 @@ twilioRouter.post("/webhook", async (req, res) => {
     let participantId = memberships[0].participantId;
     let pendingOriginalText: string | undefined;
 
-    const selectionResult = tryResolveBolaoSelection(message.phoneNumber, message.text);
+    const selectionResult = await tryResolveBolaoSelection(message.phoneNumber, message.text);
     if (selectionResult) {
       bolaoId = selectionResult.bolaoId;
       participantId = selectionResult.participantId;
       pendingOriginalText = selectionResult.originalText;
     } else {
-      const selected = getSelectedBolaoForPhone(message.phoneNumber);
+      const selected = await getSelectedBolaoForPhone(message.phoneNumber);
       const currentSelection = selected ? memberships.find((item) => item.bolaoId === selected.bolaoId) : null;
+
+      const wantsSwitch = SWITCH_BOLAO_PATTERN.test(message.text);
+
+      if (wantsSwitch && memberships.length > 1) {
+        setPendingBolaoSelection(
+          message.phoneNumber,
+          memberships[0].participantId,
+          memberships.map((item) => ({ bolaoId: item.bolaoId, bolaoName: item.bolaoName })),
+          "oi",
+        );
+        const switchingPrompt = formatTwilioResponse(
+          [
+            "🔁 Vamos trocar o bolão ativo.",
+            "",
+            buildBolaoSelectionPrompt(memberships.map((item) => ({ bolaoId: item.bolaoId, bolaoName: item.bolaoName }))),
+          ].join("\n"),
+        );
+        res.type("application/xml");
+        return res.send(switchingPrompt);
+      }
 
       if (currentSelection) {
         bolaoId = currentSelection.bolaoId;
@@ -94,8 +117,11 @@ twilioRouter.post("/webhook", async (req, res) => {
       bolaoId,
     });
 
+    const responseIntent = detectIntent(payloadText);
+    const mediaUrl = responseIntent === "oi" ? env.BOT_AVATAR_IMAGE_URL : undefined;
+
     // Formata resposta em XML TwiML para Twilio
-    const twiml = formatTwilioResponse(reply);
+    const twiml = formatTwilioResponse(reply, mediaUrl);
 
     res.type("application/xml");
     return res.send(twiml);

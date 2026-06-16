@@ -95,11 +95,27 @@ Arquivos considerados oficiais por skill:
 ### Multibolão (Google Sheets)
 - Defina um bolão padrão:
 	- `BOLAO_DEFAULT_ID=copa2026`
+- Opcional (recomendado): configure metadata completa com nome amigável e planilha por bolão:
+	- `BOLAO_CONFIG_JSON={"copa2026":{"name":"Bolão-Zica","spreadsheetId":"ID_PLANILHA_2026"},"bolao_copa_ii":{"name":"Bolão-Trader-Map","spreadsheetId":"ID_PLANILHA_II"}}`
 - Defina o mapa `bolaoId -> spreadsheetId`:
 	- `BOLAO_SPREADSHEET_MAP={"copa2026":"ID_PLANILHA_2026","bolao_copa_ii":"ID_PLANILHA_II"}`
+- Quando `BOLAO_CONFIG_JSON` estiver preenchido, ele tem prioridade sobre `BOLAO_SPREADSHEET_MAP`.
 - As rotas aceitam `bolaoId` por query, body ou header `x-bolao-id`.
 - Endpoint de suporte:
 	- `GET /boloes` retorna os bolões configurados.
+
+### Twilio multibolão (WhatsApp)
+- Se um telefone participa de mais de um bolão, o bot solicita seleção por número.
+- Para trocar o bolão ativo a qualquer momento, envie:
+	- `0`, `bolao` ou `trocar bolao`
+- Para manter a sessão ativa entre reinícios da API, configure:
+	- `SUPABASE_URL`
+	- `SUPABASE_SERVICE_ROLE_KEY`
+	- `TWILIO_SESSION_TABLE` (default: `twilio_whatsapp_sessions`)
+- Estrutura mínima sugerida na base Supabase para persistir sessão por telefone:
+	- `create table if not exists twilio_whatsapp_sessions (phone_number text primary key, bolao_id text not null, participant_id text not null, updated_at timestamptz not null default now());`
+- Para enviar a imagem de apresentação do bot no comando `oi`, configure:
+	- `BOT_AVATAR_IMAGE_URL` (URL pública HTTPS)
 
 ## Status atual
 - [x] Skill principal de regulamento implementada

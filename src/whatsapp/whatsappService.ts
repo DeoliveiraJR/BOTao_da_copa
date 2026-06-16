@@ -83,31 +83,31 @@ async function listNextDayGamesForPredictions(bolaoId?: string) {
 }
 
 const PREDICTION_OK = [
-  "Fechou, palpite salvo. Agora e so esperar a bola rolar.",
-  "Anotado aqui. Se bater, vira lenda no grupo hoje.",
-  "Registrado. Se der ruim, a gente finge que nao viu.",
-  "Guardado no sistema. Sem choro depois.",
+  "✅ Palpite registrado com sucesso. Agora e torcer.",
+  "📝 Anotado. Sua leitura de jogo foi salva no bolao.",
+  "✔️ Registrado. Seguimos no plano rumo ao topo.",
+  "🎯 Palpite confirmado no sistema.",
 ];
 
 const DUPLICATE = [
-  "Ja tem palpite teu nesse jogo. Segura a emocao.",
-  "Esse tu ja mandou. Uma aposta por jogo, sem jeitinho.",
-  "Duplicado aqui nao passa. Mantive o primeiro palpite.",
+  "Esse jogo ja tem palpite seu registrado.",
+  "Recebi esse mesmo confronto antes. Mantive o primeiro envio.",
+  "Uma aposta por jogo ja esta ativa para voce.",
 ];
 
 const GAME_NOT_FOUND = [
-  "Nao achei esse confronto na tabela oficial. Manda *jogos* pra conferir certinho.",
-  "Esse jogo nao existe na tabela do bolao. Confere em *jogos* e tenta de novo.",
+  "Nao localizei esse confronto na tabela oficial. Envie *jogos* para conferir.",
+  "Esse jogo nao aparece na grade atual do bolao. Consulte *jogos* e tente novamente.",
 ];
 
 const DEADLINE_PAST = [
-  "Esse ai ja {verb}. Janela fechada.",
-  "Vacilou no tempo: {home} x {away} ja {verb}.",
+  "Esse confronto ja {verb}. A janela de palpite foi encerrada.",
+  "{home} x {away} ja {verb}. Nao consigo mais alterar esse jogo.",
 ];
 
 const RANKING_EMPTY = [
-  "Ranking vazio por enquanto. Manda os palpites e abre os trabalhos.",
-  "Ainda sem pontuacao no ranking. O povo ta tímido.",
+  "Ranking ainda sem pontuacao. Assim que os jogos fecharem, eu atualizo.",
+  "Por enquanto o ranking esta zerado. Vamos abrir os palpites da rodada.",
 ];
 
 const NO_GAMES = [
@@ -116,14 +116,14 @@ const NO_GAMES = [
 ];
 
 const NEXT_DAY_ONLY = [
-  "Por regra do bolao, hoje so vale palpite pros jogos de amanha.",
-  "Esse jogo nao ta na proxima rodada por dia. Manda *2* pra ver os liberados.",
+  "Pela regra do bolao, hoje so vale palpite para jogos do proximo dia.",
+  "Esse jogo nao esta na janela atual. Envie *2* para ver os liberados.",
 ];
 
 const UNKNOWN = [
-  "Nao peguei a ideia. Digita *5* ou *ajuda* que eu te mostro o caminho.",
-  "Isso nao bateu com nenhum comando. Manda *ajuda*.",
-  "Nao entendi. Se perdeu, manda *5*.",
+  "Nao entendi esse comando. Envie *5* ou *ajuda* para ver as opcoes.",
+  "Esse texto nao bateu com os comandos disponiveis. Envie *ajuda*.",
+  "Se quiser, eu te guio: mande *5* para abrir o menu completo.",
 ];
 
 const EDIT_PREFIX = /^(alterar|corrigir|editar|mudar)\s+/i;
@@ -395,41 +395,44 @@ function handlePanel(bolaoId?: string): string {
 
 function handleGreeting(): string {
   return [
-    "Salve! Eu sou o *BOTao da Copa 2026*.",
+    "👋 Salve meu camarada, sou o *Milton Barata*.",
+    "Com anos de larga experiencia em compliance e ouvidoria do jogo do bicho, ja fui caixeiro viajante e hoje assumo essa bodega.",
     "",
-    "Eu cuido do bolao: registro palpite, atualizo ranking e solto resumo da rodada.",
+    "Cuido do seu bolao no WhatsApp: registro palpite, atualizo ranking e trago o resumo da rodada.",
     "",
     "*Menu rapido (tambem funciona por numero):*",
-    "1 ou ranking  → classificacao atual",
-    "2 ou jogos    → jogos liberados pra palpitar (proximo dia)",
-    "3 ou resumo   → resumo da ultima rodada vigente",
-    "4 ou painel   → link do painel online",
-    "5 ou ajuda    → guia de comandos",
-    "6 ou oi       → mostrar este menu de novo",
+    "1 ou ranking      -> classificacao atual",
+    "2 ou jogos        -> jogos liberados para palpitar (proximo dia)",
+    "3 ou resumo       -> resumo da ultima rodada vigente",
+    "4 ou painel       -> link do painel online",
+    "5 ou ajuda        -> guia de comandos",
+    "6 ou oi           -> mostrar esta apresentacao",
+    "0 ou trocar bolao -> trocar o bolao ativo",
     "",
-    "Pra palpitar: *Mexico 2x1 Africa do Sul*",
-    "Pra corrigir palpite: *alterar Mexico 2x1 Africa do Sul*",
-    "Se quiser um chute meu, manda *sugestao*.",
+    "Para palpitar: *Mexico 2x1 Africa do Sul*",
+    "Para corrigir: *alterar Mexico 2x1 Africa do Sul*",
+    "Se quiser um chute meu, envie *sugestao*.",
   ].join("\n");
 }
 
 function handleHelp(): string {
   return [
-    "❓ *Ajuda — BOTao da Copa 2026*",
+    "📘 *Ajuda - Milton Barata (BOTao da Copa 2026)*",
     "",
     "*Comandos:*",
-    "1 ou ranking  → ver classificacao",
-    "2 ou jogos    → ver jogos liberados pra palpitar (proximo dia)",
-    "3 ou resumo   → resumo da rodada vigente",
-    "4 ou painel   → abrir painel web",
-    "5 ou ajuda    → voltar neste guia",
-    "6 ou oi       → apresentacao do BOT",
-    "sugestao      → pitaco rapido do BOT",
+    "1 ou ranking      -> ver classificacao",
+    "2 ou jogos        -> ver jogos liberados para palpitar (proximo dia)",
+    "3 ou resumo       -> resumo da rodada vigente",
+    "4 ou painel       -> abrir painel web",
+    "5 ou ajuda        -> voltar neste guia",
+    "6 ou oi           -> apresentacao do bot",
+    "0 ou trocar bolao -> selecionar outro bolao",
+    "sugestao          -> pitaco rapido do bot",
     "",
     "*Para registrar palpite:*",
     "Use: *TIME A NxM TIME B*",
     "Ex: *Mexico 2x1 Africa do Sul*",
-    "Pra corrigir: *alterar TIME A NxM TIME B* (so antes do jogo comecar)",
+    "Para corrigir: *alterar TIME A NxM TIME B* (so antes do jogo comecar)",
     "",
     "*Regras do bolao:*",
     "• Hoje, so pode palpitar nos jogos do proximo dia",

@@ -9,6 +9,7 @@ const EnvSchema = z.object({
   TIMEZONE: z.string().default("America/Sao_Paulo"),
   PERSISTENCE_PROVIDER: z.enum(["in_memory", "google_sheets"]).default("in_memory"),
   BOLAO_DEFAULT_ID: z.string().default("default"),
+  BOLAO_CONFIG_JSON: z.string().optional(),
   BOLAO_SPREADSHEET_MAP: z.string().optional(),
   GOOGLE_SHEETS_SPREADSHEET_ID: z.string().optional(),
   GOOGLE_SHEETS_PREDICTIONS_RANGE: z.string().default("Palpites!A:J"),
@@ -17,6 +18,10 @@ const EnvSchema = z.object({
   TWILIO_ACCOUNT_SID: z.string().optional(),
   TWILIO_AUTH_TOKEN: z.string().optional(),
   TWILIO_WHATSAPP_NUMBER: z.string().optional(),
+  TWILIO_SESSION_TABLE: z.string().default("twilio_whatsapp_sessions"),
+  BOT_AVATAR_IMAGE_URL: z.string().optional(),
+  SUPABASE_URL: z.string().optional(),
+  SUPABASE_SERVICE_ROLE_KEY: z.string().optional(),
   STREAMLIT_URL: z.string().default("https://botao-copa-2026.streamlit.app"),
 });
 

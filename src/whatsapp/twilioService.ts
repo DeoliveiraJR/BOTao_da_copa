@@ -40,7 +40,7 @@ export function parseIncomingTwilioMessage(payload: TwilioIncomingMessage): Inte
  * Formata resposta para Twilio XML/TwiML
  * Twilio espera resposta em formato específico
  */
-export function formatTwilioResponse(replyText: string): string {
+export function formatTwilioResponse(replyText: string, mediaUrl?: string): string {
   // Escapar caracteres especiais para XML
   const escaped = replyText
     .replace(/&/g, "&amp;")
@@ -49,9 +49,14 @@ export function formatTwilioResponse(replyText: string): string {
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&apos;");
 
+  const safeMedia = mediaUrl && /^https?:\/\//i.test(mediaUrl) ? mediaUrl.trim() : "";
+  const mediaNode = safeMedia ? `\n    <Media>${safeMedia}</Media>` : "";
+
   return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Message>${escaped}</Message>
+  <Message>
+    <Body>${escaped}</Body>${mediaNode}
+  </Message>
 </Response>`;
 }
 
