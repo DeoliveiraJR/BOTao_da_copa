@@ -15,6 +15,20 @@ export const twilioRouter = Router();
 
 const SWITCH_BOLAO_PATTERN = /^(trocar\s*bolao|mudar\s*bolao|menu\s*bolao|bolao|0)$/i;
 
+function hasSameChoices(
+  pendingChoices: Array<{ bolaoId: string; bolaoName: string }>,
+  currentChoices: Array<{ bolaoId: string; bolaoName: string }>,
+): boolean {
+  if (pendingChoices.length !== currentChoices.length) return false;
+  const pendingIds = new Set(pendingChoices.map((item) => item.bolaoId));
+  const currentIds = new Set(currentChoices.map((item) => item.bolaoId));
+  if (pendingIds.size !== currentIds.size) return false;
+  for (const id of pendingIds) {
+    if (!currentIds.has(id)) return false;
+  }
+  return true;
+}
+
 /**
  * POST /twilio/webhook
  * Endpoint que Twilio chama quando recebe mensagem no Sandbox
@@ -84,19 +98,19 @@ twilioRouter.post("/webhook", async (req, res) => {
         bolaoId = only.bolaoId;
         participantId = only.participantId;
       } else {
+        const currentChoices = memberships.map((item) => ({ bolaoId: item.bolaoId, bolaoName: item.bolaoName }));
         const pending = getPendingBolaoSelection(message.phoneNumber);
-        if (!pending) {
+        const shouldRefreshPending = !pending || !hasSameChoices(pending.choices, currentChoices);
+
+        if (shouldRefreshPending) {
           setPendingBolaoSelection(
             message.phoneNumber,
             memberships[0].participantId,
-            memberships.map((item) => ({ bolaoId: item.bolaoId, bolaoName: item.bolaoName })),
+            currentChoices,
             message.text,
           );
 
-          const selectionResponse = formatTwilioResponse(buildBolaoSelectionPrompt(memberships.map((item) => ({
-            bolaoId: item.bolaoId,
-            bolaoName: item.bolaoName,
-          }))));
+          const selectionResponse = formatTwilioResponse(buildBolaoSelectionPrompt(currentChoices));
 
           res.type("application/xml");
           return res.send(selectionResponse);
