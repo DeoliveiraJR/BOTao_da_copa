@@ -1,6 +1,13 @@
 import { Router } from "express";
 import { processWhatsAppMessage } from "./whatsappService.js";
-import { resolveParticipantByWhatsapp } from "./participantResolver.js";
+import { resolveParticipantsByWhatsapp } from "./participantResolver.js";
+import {
+  buildBolaoSelectionPrompt,
+  getPendingBolaoSelection,
+  getSelectedBolaoForPhone,
+  setPendingBolaoSelection,
+  tryResolveBolaoSelection,
+} from "./bolaoSessionStore.js";
 import { formatTwilioResponse, parseIncomingTwilioMessage } from "./twilioService.js";
 
 export const twilioRouter = Router();
@@ -24,19 +31,67 @@ twilioRouter.post("/webhook", async (req, res) => {
     // Parse da mensagem
     const message = parseIncomingTwilioMessage(twilioPayload);
 
-    const participant = await resolveParticipantByWhatsapp(message.phoneNumber);
-    if (!participant) {
+    const memberships = await resolveParticipantsByWhatsapp(message.phoneNumber);
+    if (memberships.length === 0) {
       const notRegisteredResponse = formatTwilioResponse(
-        "Seu numero nao esta cadastrado neste bolao. Fale com o administrador para vincular seu WhatsApp antes de enviar palpites."
+        "Seu numero nao esta cadastrado em nenhum bolao ativo. Fale com o administrador para vincular seu WhatsApp antes de enviar palpites."
       );
       res.type("application/xml");
       return res.send(notRegisteredResponse);
     }
 
+    let bolaoId: string | undefined;
+    let participantId = memberships[0].participantId;
+    let pendingOriginalText: string | undefined;
+
+    const selectionResult = tryResolveBolaoSelection(message.phoneNumber, message.text);
+    if (selectionResult) {
+      bolaoId = selectionResult.bolaoId;
+      participantId = selectionResult.participantId;
+      pendingOriginalText = selectionResult.originalText;
+    } else {
+      const selected = getSelectedBolaoForPhone(message.phoneNumber);
+      const currentSelection = selected ? memberships.find((item) => item.bolaoId === selected.bolaoId) : null;
+
+      if (currentSelection) {
+        bolaoId = currentSelection.bolaoId;
+        participantId = currentSelection.participantId;
+      } else if (memberships.length === 1) {
+        const only = memberships[0];
+        bolaoId = only.bolaoId;
+        participantId = only.participantId;
+      } else {
+        const pending = getPendingBolaoSelection(message.phoneNumber);
+        if (!pending) {
+          setPendingBolaoSelection(
+            message.phoneNumber,
+            memberships[0].participantId,
+            memberships.map((item) => ({ bolaoId: item.bolaoId, bolaoName: item.bolaoName })),
+            message.text,
+          );
+
+          const selectionResponse = formatTwilioResponse(buildBolaoSelectionPrompt(memberships.map((item) => ({
+            bolaoId: item.bolaoId,
+            bolaoName: item.bolaoName,
+          }))));
+
+          res.type("application/xml");
+          return res.send(selectionResponse);
+        }
+
+        const waitingResponse = formatTwilioResponse(buildBolaoSelectionPrompt(pending.choices));
+        res.type("application/xml");
+        return res.send(waitingResponse);
+      }
+    }
+
+    const payloadText = pendingOriginalText ?? message.text;
+
     // Processa com lógica existente
     const reply = await processWhatsAppMessage({
-      participantId: participant.participantId,
-      text: message.text,
+      participantId,
+      text: payloadText,
+      bolaoId,
     });
 
     // Formata resposta em XML TwiML para Twilio

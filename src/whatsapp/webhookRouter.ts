@@ -19,8 +19,9 @@ whatsappRouter.get("/webhook", (req, res) => {
 whatsappRouter.post("/webhook", async (req, res) => {
   const participantId = String(req.body?.participantId ?? "unknown-user");
   const text = String(req.body?.text ?? "");
+  const bolaoId = String(req.body?.bolaoId ?? "").trim() || undefined;
 
-  const reply = await processWhatsAppMessage({ participantId, text });
+  const reply = await processWhatsAppMessage({ participantId, text, bolaoId });
 
   return res.status(200).json({ ok: true, reply });
 });

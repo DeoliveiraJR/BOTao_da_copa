@@ -8,10 +8,6 @@ import {
 } from "../sheets/predictionRepositoryFactory.js";
 import { env } from "../config/env.js";
 
-const predictionRepo = createPredictionRepository();
-const gameRepo = createGameRepository();
-const resultRepo = createResultRepository();
-
 const PANEL_URL = env.STREAMLIT_URL;
 
 function pick<T>(items: T[]): T {
@@ -63,11 +59,22 @@ function predictionPayload(input: string): { mode: "create" | "edit"; text: stri
   return { mode: "create", text: clean };
 }
 
-function predictionLink(participantId: string): string {
-  return `${PANEL_URL}?view=palpites&user=${encodeURIComponent(participantId)}`;
+function predictionLink(participantId: string, bolaoId?: string): string {
+  const params = new URLSearchParams({ view: "palpites", user: participantId });
+  if (bolaoId) params.set("bolaoId", bolaoId);
+  return `${PANEL_URL}?${params.toString()}`;
 }
 
-async function listNextDayGamesForPredictions() {
+function reposForBolao(bolaoId?: string) {
+  return {
+    predictionRepo: createPredictionRepository(bolaoId),
+    gameRepo: createGameRepository(bolaoId),
+    resultRepo: createResultRepository(bolaoId),
+  };
+}
+
+async function listNextDayGamesForPredictions(bolaoId?: string) {
+  const { gameRepo } = reposForBolao(bolaoId);
   const games = await gameRepo.listGames();
   const nextDayKey = getNextSaoPauloDateKey();
   return games
@@ -154,7 +161,8 @@ export function detectIntent(text: string): Intent {
   return "unknown";
 }
 
-async function handlePrediction(participantId: string, text: string): Promise<string> {
+async function handlePrediction(participantId: string, text: string, bolaoId?: string): Promise<string> {
+  const { predictionRepo, gameRepo } = reposForBolao(bolaoId);
   const payload = predictionPayload(text);
   const parsed = parsePredictionText(payload.text);
   if (!parsed) {
@@ -202,7 +210,7 @@ async function handlePrediction(participantId: string, text: string): Promise<st
     return [
       "✅ Palpite alterado com sucesso.",
       `Novo registro: *${parsed.homeTeam} ${parsed.homeGoals}x${parsed.awayGoals} ${parsed.awayTeam}*`,
-      `Consulta: ${predictionLink(participantId)}`,
+      `Consulta: ${predictionLink(participantId, bolaoId)}`,
     ].join("\n\n");
   }
 
@@ -219,12 +227,12 @@ async function handlePrediction(participantId: string, text: string): Promise<st
   return [
     pick(PREDICTION_OK),
     `✅ *${parsed.homeTeam} ${parsed.homeGoals}x${parsed.awayGoals} ${parsed.awayTeam}*`,
-    `Consulta: ${predictionLink(participantId)}`,
+    `Consulta: ${predictionLink(participantId, bolaoId)}`,
   ].join("\n\n");
 }
 
-async function handleRanking(): Promise<string> {
-  const ranking = await getRanking();
+async function handleRanking(bolaoId?: string): Promise<string> {
+  const ranking = await getRanking(bolaoId);
   if (ranking.length === 0) return pick(RANKING_EMPTY);
 
   const medals = ["🥇", "🥈", "🥉"];
@@ -241,8 +249,8 @@ async function handleRanking(): Promise<string> {
   return `🏆 *Ranking do Bolao*\n\n${lines.join("\n")}${taunt}`;
 }
 
-async function handleGames(): Promise<string> {
-  const upcoming = await listNextDayGamesForPredictions();
+async function handleGames(bolaoId?: string): Promise<string> {
+  const upcoming = await listNextDayGamesForPredictions(bolaoId);
   if (upcoming.length === 0) {
     return "Nao achei jogo liberado pra palpitar no proximo dia ainda. Assim que a tabela abrir, eu te aviso por aqui.";
   }
@@ -262,11 +270,12 @@ async function handleGames(): Promise<string> {
   ].join("\n");
 }
 
-async function handleResumo(): Promise<string> {
+async function handleResumo(bolaoId?: string): Promise<string> {
+  const { predictionRepo, gameRepo, resultRepo } = reposForBolao(bolaoId);
   const [predictions, confirmedResults, ranking, games] = await Promise.all([
     predictionRepo.listPredictions(),
     resultRepo.listConfirmedResults(),
-    getRanking(),
+    getRanking(bolaoId),
     gameRepo.listGames(),
   ]);
 
@@ -357,8 +366,8 @@ async function handleResumo(): Promise<string> {
   ].join("\n");
 }
 
-async function handleSugestao(): Promise<string> {
-  const upcoming = await listNextDayGamesForPredictions();
+async function handleSugestao(bolaoId?: string): Promise<string> {
+  const upcoming = await listNextDayGamesForPredictions(bolaoId);
   if (upcoming.length === 0) {
     return "Sem jogo liberado no proximo dia pra sugerir agora. Manda *2* pra acompanhar quando abrir nova janela.";
   }
@@ -378,8 +387,10 @@ async function handleSugestao(): Promise<string> {
   ].join("\n");
 }
 
-function handlePanel(): string {
-  return `📊 *Painel do Bolao*\n\nRanking, palpites e resultados em tempo real:\n${PANEL_URL}`;
+function handlePanel(bolaoId?: string): string {
+  const params = new URLSearchParams({ view: "painel" });
+  if (bolaoId) params.set("bolaoId", bolaoId);
+  return `📊 *Painel do Bolao*\n\nRanking, palpites e resultados em tempo real:\n${PANEL_URL}?${params.toString()}`;
 }
 
 function handleGreeting(): string {
@@ -432,19 +443,20 @@ function handleHelp(): string {
 export type IncomingWhatsAppMessage = {
   participantId: string;
   text: string;
+  bolaoId?: string;
 };
 
 export async function processWhatsAppMessage(input: IncomingWhatsAppMessage): Promise<string> {
   const intent = detectIntent(input.text);
   switch (intent) {
-    case "prediction": return handlePrediction(input.participantId, input.text);
-    case "ranking":    return handleRanking();
-    case "games":      return handleGames();
-    case "resumo":     return handleResumo();
-    case "panel":      return handlePanel();
+    case "prediction": return handlePrediction(input.participantId, input.text, input.bolaoId);
+    case "ranking":    return handleRanking(input.bolaoId);
+    case "games":      return handleGames(input.bolaoId);
+    case "resumo":     return handleResumo(input.bolaoId);
+    case "panel":      return handlePanel(input.bolaoId);
     case "help":       return handleHelp();
     case "oi":         return handleGreeting();
-    case "sugestao":   return handleSugestao();
+    case "sugestao":   return handleSugestao(input.bolaoId);
     default:            return pick(UNKNOWN);
   }
 }
