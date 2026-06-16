@@ -19,27 +19,6 @@ function toSaoPauloDateKey(date: Date): string {
   }).format(date);
 }
 
-function getNextSaoPauloDateKey(reference = new Date()): string {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/Sao_Paulo",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(reference);
-
-  const valueOf = (type: "year" | "month" | "day") => Number(parts.find((p) => p.type === type)?.value ?? "0");
-  const year = valueOf("year");
-  const month = valueOf("month");
-  const day = valueOf("day");
-  const nextUtc = new Date(Date.UTC(year, month - 1, day + 1));
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "UTC",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(nextUtc);
-}
-
 function asString(value: unknown): string {
   if (Array.isArray(value)) {
     return String(value[0] ?? "").trim();
@@ -130,9 +109,9 @@ app.post("/predictions", async (req, res) => {
   }
 
   const gameDateKey = toSaoPauloDateKey(new Date(game.dateTime));
-  const nextDateKey = getNextSaoPauloDateKey();
-  if (gameDateKey !== nextDateKey) {
-    return res.status(400).json({ ok: false, error: "Hoje só é permitido palpitar jogos do próximo dia" });
+  const todayKey = toSaoPauloDateKey(new Date());
+  if (gameDateKey < todayKey) {
+    return res.status(400).json({ ok: false, error: "Hoje só é permitido palpitar jogos de hoje em diante" });
   }
 
   const action = await predictionRepo.upsertPrediction(String(participantId), {

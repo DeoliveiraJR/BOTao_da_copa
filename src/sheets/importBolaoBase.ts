@@ -38,7 +38,9 @@ function normalizeId(value: unknown): string {
 }
 
 function parseOptionalInt(value: unknown): number | null {
-  const parsed = Number(String(value ?? "").trim());
+  const text = String(value ?? "").trim();
+  if (!text) return null;
+  const parsed = Number(text);
   return Number.isFinite(parsed) ? parsed : null;
 }
 
@@ -113,6 +115,7 @@ async function writeTabRows(sheets: Awaited<ReturnType<typeof getSheetsClient>>,
 async function main() {
   const args = process.argv.slice(2);
   const apply = args.includes("--apply");
+  const replaceParticipants = args.includes("--replace-participants");
   const pathArg = args.find((a) => !a.startsWith("--"));
   const bolaoArg = args.find((a) => a.startsWith("--bolao-id="))?.split("=")[1]?.trim();
   const spreadsheetArg = args.find((a) => a.startsWith("--spreadsheet-id="))?.split("=")[1]?.trim();
@@ -303,14 +306,20 @@ async function main() {
   const spreadsheetId = spreadsheetArg || resolveSpreadsheetIdForBolao(bolaoArg).spreadsheetId || required(env.GOOGLE_SHEETS_SPREADSHEET_ID, "GOOGLE_SHEETS_SPREADSHEET_ID");
   const sheets = await getSheetsClient();
 
-  await writeTabRows(sheets, spreadsheetId, "Participantes!A2:Z", participantsValues);
+  if (replaceParticipants) {
+    await writeTabRows(sheets, spreadsheetId, "Participantes!A2:Z", participantsValues);
+  }
   await writeTabRows(sheets, spreadsheetId, "Jogos!A2:Z", gamesValues);
   await writeTabRows(sheets, spreadsheetId, "Palpites!A2:Z", predictionsValues);
   await writeTabRows(sheets, spreadsheetId, "Resultados!A2:Z", results);
   await writeTabRows(sheets, spreadsheetId, "Pontuacao por Jogo!A2:Z", []);
   await writeTabRows(sheets, spreadsheetId, "Ranking!A2:Z", []);
 
-  console.log("Importação aplicada com sucesso na planilha oficial (incluindo limpeza de ranking/pontuação derivados).");
+  if (replaceParticipants) {
+    console.log("Importação aplicada com sucesso (Participantes/Jogos/Palpites/Resultados + limpeza de derivados).");
+  } else {
+    console.log("Importação aplicada com sucesso (Jogos/Palpites/Resultados + limpeza de derivados, Participantes preservado).");
+  }
 }
 
 main().catch((error) => {

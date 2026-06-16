@@ -73,12 +73,12 @@ function reposForBolao(bolaoId?: string) {
   };
 }
 
-async function listNextDayGamesForPredictions(bolaoId?: string) {
+async function listGamesOpenForPredictions(bolaoId?: string) {
   const { gameRepo } = reposForBolao(bolaoId);
   const games = await gameRepo.listGames();
-  const nextDayKey = getNextSaoPauloDateKey();
+  const todayKey = toSaoPauloDateKey(new Date());
   return games
-    .filter((g) => g.status === "scheduled" && toSaoPauloDateKey(new Date(g.dateTime)) === nextDayKey)
+    .filter((g) => g.status === "scheduled" && toSaoPauloDateKey(new Date(g.dateTime)) >= todayKey)
     .sort((a, b) => new Date(a.dateTime).getTime() - new Date(b.dateTime).getTime());
 }
 
@@ -115,9 +115,9 @@ const NO_GAMES = [
   "Agenda vazia por agora. Ja ja aparece jogo novo.",
 ];
 
-const NEXT_DAY_ONLY = [
-  "Pela regra do bolao, hoje so vale palpite para jogos do proximo dia.",
-  "Esse jogo nao esta na janela atual. Envie *2* para ver os liberados.",
+const TODAY_ONWARDS_ONLY = [
+  "Pela regra do bolao, hoje so vale palpite para jogos de hoje em diante.",
+  "Esse jogo nao esta na janela atual. Envie *2* para ver os jogos liberados.",
 ];
 
 const UNKNOWN = [
@@ -191,10 +191,10 @@ async function handlePrediction(participantId: string, text: string, bolaoId?: s
   }
 
   const gameDayKey = toSaoPauloDateKey(new Date(game.dateTime));
-  const nextDayKey = getNextSaoPauloDateKey();
-  if (gameDayKey !== nextDayKey) {
+  const todayKey = toSaoPauloDateKey(new Date());
+  if (gameDayKey < todayKey) {
     return [
-      pick(NEXT_DAY_ONLY),
+      pick(TODAY_ONWARDS_ONLY),
       "Manda *2* ou *jogos* pra ver so os jogos liberados.",
     ].join("\n");
   }
@@ -253,9 +253,9 @@ async function handleRanking(bolaoId?: string): Promise<string> {
 }
 
 async function handleGames(bolaoId?: string): Promise<string> {
-  const upcoming = await listNextDayGamesForPredictions(bolaoId);
+  const upcoming = await listGamesOpenForPredictions(bolaoId);
   if (upcoming.length === 0) {
-    return "Nao achei jogo liberado pra palpitar no proximo dia ainda. Assim que a tabela abrir, eu te aviso por aqui.";
+    return "Nao achei jogo liberado pra palpitar hoje/em diante ainda. Assim que a tabela abrir, eu te aviso por aqui.";
   }
 
   const lines = upcoming.map((g) => {
@@ -264,7 +264,7 @@ async function handleGames(bolaoId?: string): Promise<string> {
   });
 
   return [
-    "📅 *Proximos jogos para palpitar (proximo dia)*",
+    "📅 *Jogos liberados para palpitar (hoje em diante)*",
     "",
     ...lines,
     "",
@@ -443,9 +443,9 @@ async function handleResumo(bolaoId?: string): Promise<string> {
 }
 
 async function handleSugestao(bolaoId?: string): Promise<string> {
-  const upcoming = await listNextDayGamesForPredictions(bolaoId);
+  const upcoming = await listGamesOpenForPredictions(bolaoId);
   if (upcoming.length === 0) {
-    return "Sem jogo liberado no proximo dia pra sugerir agora. Manda *2* pra acompanhar quando abrir nova janela.";
+    return "Sem jogo liberado hoje/em diante pra sugerir agora. Manda *2* pra acompanhar quando abrir nova janela.";
   }
 
   const picks = upcoming.slice(0, 3).map((g, idx) => {
@@ -478,7 +478,7 @@ function handleGreeting(): string {
     "",
     "*Menu Premium (também funciona por número):*",
     "🥇 1 ou ranking      -> classificação atual",
-    "📅 2 ou jogos        -> jogos liberados para palpitar (próximo dia)",
+    "📅 2 ou jogos        -> jogos liberados para palpitar (hoje em diante)",
     "🧾 3 ou resumo       -> resumo da última rodada vigente",
     "🖥️ 4 ou painel       -> link do painel online",
     "🛟 5 ou ajuda        -> guia de comandos",
@@ -498,7 +498,7 @@ function handleHelp(): string {
     "",
     "*Comandos:*",
     "🥇 1 ou ranking      -> ver classificação",
-    "📅 2 ou jogos        -> ver jogos liberados para palpitar (próximo dia)",
+    "📅 2 ou jogos        -> ver jogos liberados para palpitar (hoje em diante)",
     "🧾 3 ou resumo       -> resumo da rodada vigente",
     "🖥️ 4 ou painel       -> abrir painel web",
     "🛟 5 ou ajuda        -> voltar neste guia",
