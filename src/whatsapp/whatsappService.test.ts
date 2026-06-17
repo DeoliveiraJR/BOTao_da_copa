@@ -37,7 +37,7 @@ test("detects oi intent", () => {
   assert.equal(detectIntent("olá"), "oi");
   assert.equal(detectIntent("Bom dia"), "oi");
   assert.equal(detectIntent("start"), "oi");
-  assert.equal(detectIntent("6"), "oi");
+  assert.equal(detectIntent("6"), "unknown");
 });
 
 test("detects panel intent", () => {

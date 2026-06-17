@@ -73,12 +73,88 @@ function reposForBolao(bolaoId?: string) {
   };
 }
 
+function isPlaceholderTeam(value: string): boolean {
+  const normalized = String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+  if (!normalized) return true;
+  return ["a definir", "vencedor", "perdedor", "slot", "tbd", "to be defined"].some((token) => normalized.includes(token));
+}
+
+const COUNTRY_FLAGS: Record<string, string> = {
+  "argentina": "🇦🇷",
+  "algeria": "🇩🇿",
+  "argelia": "🇩🇿",
+  "austria": "🇦🇹",
+  "brasil": "🇧🇷",
+  "brazil": "🇧🇷",
+  "costa rica": "🇨🇷",
+  "croatia": "🇭🇷",
+  "dinamarca": "🇩🇰",
+  "denmark": "🇩🇰",
+  "egypt": "🇪🇬",
+  "egito": "🇪🇬",
+  "england": "🏴",
+  "espanha": "🇪🇸",
+  "franca": "🇫🇷",
+  "france": "🇫🇷",
+  "iraq": "🇮🇶",
+  "iraque": "🇮🇶",
+  "jordania": "🇯🇴",
+  "jordan": "🇯🇴",
+  "mexico": "🇲🇽",
+  "morocco": "🇲🇦",
+  "noruega": "🇳🇴",
+  "norway": "🇳🇴",
+  "portugal": "🇵🇹",
+  "qatar": "🇶🇦",
+  "saudi arabia": "🇸🇦",
+  "senegal": "🇸🇳",
+  "south africa": "🇿🇦",
+  "africa do sul": "🇿🇦",
+  "tunisia": "🇹🇳",
+  "uruguai": "🇺🇾",
+  "uruguay": "🇺🇾",
+};
+
+function normalizeCountryName(value: string): string {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+function teamWithFlag(team: string): string {
+  const key = normalizeCountryName(team);
+  const flag = COUNTRY_FLAGS[key] ?? "⚽";
+  return `${flag} ${team}`;
+}
+
+function listOpenDateKeys(reference = new Date()): { todayKey: string; tomorrowKey: string } {
+  return {
+    todayKey: toSaoPauloDateKey(reference),
+    tomorrowKey: getNextSaoPauloDateKey(reference),
+  };
+}
+
 async function listGamesOpenForPredictions(bolaoId?: string) {
   const { gameRepo } = reposForBolao(bolaoId);
   const games = await gameRepo.listGames();
-  const todayKey = toSaoPauloDateKey(new Date());
+  const now = new Date();
+  const { todayKey, tomorrowKey } = listOpenDateKeys(now);
   return games
-    .filter((g) => g.status === "scheduled" && toSaoPauloDateKey(new Date(g.dateTime)) >= todayKey)
+    .filter((g) => {
+      if (g.status !== "scheduled") return false;
+      if (isPlaceholderTeam(g.homeTeam) || isPlaceholderTeam(g.awayTeam)) return false;
+      const gameDate = new Date(g.dateTime);
+      if (Number.isNaN(gameDate.getTime())) return false;
+      const gameKey = toSaoPauloDateKey(gameDate);
+      if (!(gameKey === todayKey || gameKey === tomorrowKey)) return false;
+      return gameDate.getTime() > now.getTime();
+    })
     .sort((a, b) => new Date(a.dateTime).getTime() - new Date(b.dateTime).getTime());
 }
 
@@ -115,8 +191,8 @@ const NO_GAMES = [
   "Agenda vazia por agora. Ja ja aparece jogo novo.",
 ];
 
-const TODAY_ONWARDS_ONLY = [
-  "Pela regra do bolao, hoje so vale palpite para jogos de hoje em diante.",
+const TODAY_TOMORROW_ONLY = [
+  "Pela regra do bolao, hoje so vale palpite para jogos de hoje e de amanha.",
   "Esse jogo nao esta na janela atual. Envie *2* para ver os jogos liberados.",
 ];
 
@@ -146,7 +222,7 @@ const REPORT_PATTERNS = /^(7|relatorio|relatório|status do dia|quem palpitou|pa
 const RESUMO_PATTERNS = /^(3|resumo|rodada|resumo da rodada|sintese|resultado da rodada)$/i;
 const PANEL_PATTERNS = /^(4|painel|dashboard|link|placar online|acompanhar)$/i;
 const HELP_PATTERNS = /^(5|ajuda|help|\?)$/i;
-const OI_PATTERNS = /^(6|oi|ol[aá]|e a[ií]|fala|salve|inicio|start|bom dia|boa tarde|boa noite)$/i;
+const OI_PATTERNS = /^(oi|ol[aá]|e a[ií]|fala|salve|inicio|start|bom dia|boa tarde|boa noite)$/i;
 const SUGESTAO_PATTERNS = /^(sugestao|sugestões|sugerir|pitaco|palpite do bot)$/i;
 
 export function detectIntent(text: string): Intent {
@@ -190,11 +266,13 @@ async function handlePrediction(participantId: string, text: string, bolaoId?: s
       .replace("{away}", parsed.awayTeam);
   }
 
-  const gameDayKey = toSaoPauloDateKey(new Date(game.dateTime));
-  const todayKey = toSaoPauloDateKey(new Date());
-  if (gameDayKey < todayKey) {
+  const gameDate = new Date(game.dateTime);
+  const { todayKey, tomorrowKey } = listOpenDateKeys(new Date());
+  const gameDayKey = toSaoPauloDateKey(gameDate);
+  const isOpenWindow = gameDayKey === todayKey || gameDayKey === tomorrowKey;
+  if (!isOpenWindow || gameDate.getTime() <= Date.now()) {
     return [
-      pick(TODAY_ONWARDS_ONLY),
+      pick(TODAY_TOMORROW_ONLY),
       "Manda *2* ou *jogos* pra ver so os jogos liberados.",
     ].join("\n");
   }
@@ -255,27 +333,47 @@ async function handleRanking(bolaoId?: string): Promise<string> {
 async function handleGames(bolaoId?: string): Promise<string> {
   const upcoming = await listGamesOpenForPredictions(bolaoId);
   if (upcoming.length === 0) {
-    return "Nao achei jogo liberado pra palpitar hoje/em diante ainda. Assim que a tabela abrir, eu te aviso por aqui.";
+    return "Nao achei jogo liberado para hoje/amanha no momento. Assim que abrir a janela, te aviso por aqui.";
   }
 
   const MAX_GAMES = 5;
   const displayGames = upcoming.slice(0, MAX_GAMES);
   const hasMore = upcoming.length > MAX_GAMES;
 
-  const lines = displayGames.map((g) => {
-    const dt = new Date(g.dateTime).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
-    return `⚽ *${g.homeTeam} x ${g.awayTeam}*\n   ${dt}`;
-  });
+  const groups = new Map<string, string[]>();
+  for (const g of displayGames) {
+    const dtObj = new Date(g.dateTime);
+    const dateLabel = dtObj.toLocaleDateString("pt-BR", {
+      timeZone: "America/Sao_Paulo",
+      weekday: "long",
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    });
+    const hour = dtObj.toLocaleTimeString("pt-BR", {
+      timeZone: "America/Sao_Paulo",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    const line = `• ${hour} — ${teamWithFlag(g.homeTeam)} x ${teamWithFlag(g.awayTeam)}`;
+    groups.set(dateLabel, [...(groups.get(dateLabel) ?? []), line]);
+  }
+
+  const lines: string[] = [];
+  for (const [dateLabel, items] of groups.entries()) {
+    lines.push(`🗓️ *${dateLabel}*`);
+    lines.push(...items);
+    lines.push("");
+  }
 
   const footer = hasMore
     ? `\n... e mais ${upcoming.length - MAX_GAMES} jogos.\nConsulte o painel para ver todos.`
     : "";
 
   return [
-    "📅 *Jogos liberados para palpitar (hoje em diante)*",
+    "📅 *Jogos liberados para palpitar (hoje + amanha)*",
     "",
     ...lines,
-    "",
     "Pra palpitar: *TIME A NxM TIME B*",
     "Pra corrigir erro: *alterar TIME A NxM TIME B*",
     footer,
@@ -418,7 +516,7 @@ async function handleResumo(bolaoId?: string): Promise<string> {
       summary.set(pred.participantId, current);
     }
 
-    return `⚽ ${result.game.homeTeam} ${actual.home}x${actual.away} ${result.game.awayTeam} — ${exactCount} placar(es) exato(s), ${outcomeCount} acerto(s) de resultado`;
+    return `⚽ ${teamWithFlag(result.game.homeTeam)} ${actual.home}x${actual.away} ${teamWithFlag(result.game.awayTeam)}\n   🎯 ${exactCount} exato(s) | ✅ ${outcomeCount} acerto(s)`;
   });
 
   const rankingMap = new Map(ranking.map((r) => [r.participantId, r]));
@@ -429,7 +527,7 @@ async function handleResumo(bolaoId?: string): Promise<string> {
       const rank = rankingMap.get(id);
       const name = rank?.name ?? id;
       const total = rank?.totalPoints ?? 0;
-      return `• ${name}: +${s.roundPoints} pts na rodada (${s.exact} exatos, ${s.outcome} resultado, ${s.miss} erros) | acumulado: ${total} pts`;
+      return `• ${name}: +${s.roundPoints} pts (${s.exact} exatos, ${s.outcome} acerto, ${s.miss} erro) | total ${total}`;
     });
 
   const roundLabel = latest.key.startsWith("round:")
@@ -437,26 +535,41 @@ async function handleResumo(bolaoId?: string): Promise<string> {
     : `Data ${latest.key.replace("date:", "")}`;
 
   const leader = ranking[0];
+  const podium = ranking.slice(0, 3);
+
+  const podiumLines = podium.length
+    ? podium.map((entry, idx) => {
+      const medal = idx === 0 ? "🥇" : idx === 1 ? "🥈" : "🥉";
+      return `${medal} ${entry.name}: ${entry.totalPoints} pts`;
+    })
+    : ["Ranking geral ainda vazio."];
+
+  const maxGameLines = 4;
+  const shownGames = gameLines.slice(0, maxGameLines);
+  const extraGames = gameLines.length - shownGames.length;
+  const gameFooter = extraGames > 0 ? [`… e mais ${extraGames} jogo(s) nesta rodada.`] : [];
 
   return [
-    "📋 *Resumo da Rodada Vigente*",
-    `Rodada: *${roundLabel}*`,
+    "📣 *Boletim da Rodada*",
+    `Rodada vigente: *${roundLabel}*`,
     "",
-    ...gameLines,
+    "*Resultados confirmados:*",
+    ...shownGames,
+    ...gameFooter,
     "",
-    "*Desempenho dos participantes na rodada:*",
-    ...(participantLines.length > 0 ? participantLines : ["Ninguem pontuou nessa rodada ainda."]),
+    "*Quem mandou bem hoje:*",
+    ...(participantLines.length > 0 ? participantLines.slice(0, 8) : ["Ninguem pontuou nessa rodada ainda."]),
     "",
-    leader
-      ? `Lider geral: *${leader.name}* com *${leader.totalPoints} pts*.`
-      : "Ranking geral ainda vazio.",
+    "*Top 3 geral:*",
+    ...podiumLines,
+    leader ? `\n👑 Lider atual: *${leader.name}* (${leader.totalPoints} pts).` : "",
   ].join("\n");
 }
 
 async function handleSugestao(bolaoId?: string): Promise<string> {
   const upcoming = await listGamesOpenForPredictions(bolaoId);
   if (upcoming.length === 0) {
-    return "Sem jogo liberado hoje/em diante pra sugerir agora. Manda *2* pra acompanhar quando abrir nova janela.";
+    return "Sem jogo liberado hoje/amanha para sugerir agora. Manda *2* pra acompanhar quando abrir nova janela.";
   }
 
   const picks = upcoming.slice(0, 3).map((g, idx) => {
@@ -489,11 +602,10 @@ function handleGreeting(): string {
     "",
     "*Menu Premium (também funciona por número):*",
     "🥇 1 ou ranking      -> classificação atual",
-    "📅 2 ou jogos        -> jogos liberados para palpitar (hoje em diante)",
+    "📅 2 ou jogos        -> jogos liberados para palpitar (hoje + amanha)",
     "🧾 3 ou resumo       -> resumo da última rodada vigente",
     "🖥️ 4 ou painel       -> link do painel online",
     "🛟 5 ou ajuda        -> guia de comandos",
-    "🎙️ 6 ou oi           -> mostrar esta apresentação",
     "📊 7 ou relatorio    -> quem já palpitou hoje",
     "🔁 0 ou trocar bolao -> trocar o bolão ativo",
     "",
@@ -509,11 +621,10 @@ function handleHelp(): string {
     "",
     "*Comandos:*",
     "🥇 1 ou ranking      -> ver classificação",
-    "📅 2 ou jogos        -> ver jogos liberados para palpitar (hoje em diante)",
+    "📅 2 ou jogos        -> ver jogos liberados para palpitar (hoje + amanha)",
     "🧾 3 ou resumo       -> resumo da rodada vigente",
     "🖥️ 4 ou painel       -> abrir painel web",
     "🛟 5 ou ajuda        -> voltar neste guia",
-    "🎙️ 6 ou oi           -> apresentação do bot",
     "📊 7 ou relatorio    -> relatório diário de palpites",
     "🔁 0 ou trocar bolao -> selecionar outro bolão",
     "🧠 sugestao          -> pitaco rápido do bot",
@@ -524,7 +635,7 @@ function handleHelp(): string {
     "Para corrigir: *alterar TIME A NxM TIME B* (só antes do jogo começar)",
     "",
     "*Regras do bolão:*",
-    "• Hoje, só pode palpitar nos jogos do próximo dia",
+    "• Hoje, só pode palpitar em jogos de hoje e de amanhã",
     "• 1 palpite por jogo (pode corrigir só antes do início)",
     "• Placar exato = 3 pts",
     "• Resultado certo = 1 pt",
