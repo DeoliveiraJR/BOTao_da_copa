@@ -258,10 +258,18 @@ async function handleGames(bolaoId?: string): Promise<string> {
     return "Nao achei jogo liberado pra palpitar hoje/em diante ainda. Assim que a tabela abrir, eu te aviso por aqui.";
   }
 
-  const lines = upcoming.map((g) => {
+  const MAX_GAMES = 5;
+  const displayGames = upcoming.slice(0, MAX_GAMES);
+  const hasMore = upcoming.length > MAX_GAMES;
+
+  const lines = displayGames.map((g) => {
     const dt = new Date(g.dateTime).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
     return `⚽ *${g.homeTeam} x ${g.awayTeam}*\n   ${dt}`;
   });
+
+  const footer = hasMore
+    ? `\n... e mais ${upcoming.length - MAX_GAMES} jogos.\nConsulte o painel para ver todos.`
+    : "";
 
   return [
     "📅 *Jogos liberados para palpitar (hoje em diante)*",
@@ -269,8 +277,11 @@ async function handleGames(bolaoId?: string): Promise<string> {
     ...lines,
     "",
     "Pra palpitar: *TIME A NxM TIME B*",
-    "Pra corrigir erro de digitacao: *alterar TIME A NxM TIME B*",
-  ].join("\n");
+    "Pra corrigir erro: *alterar TIME A NxM TIME B*",
+    footer,
+  ]
+    .filter((line) => line !== "")
+    .join("\n");
 }
 
 function normalizeGameId(value: unknown): string {
