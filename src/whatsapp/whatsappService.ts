@@ -84,39 +84,54 @@ function isPlaceholderTeam(value: string): boolean {
 }
 
 const COUNTRY_FLAGS: Record<string, string> = {
+  "alemanha": "🇩🇪",
   "argentina": "🇦🇷",
-  "algeria": "🇩🇿",
   "argelia": "🇩🇿",
+  "australia": "🇦🇺",
+  "arabia saudita": "🇸🇦",
   "austria": "🇦🇹",
+  "belgica": "🇧🇪",
+  "bosnia e herzegovina": "🇧🇦",
   "brasil": "🇧🇷",
-  "brazil": "🇧🇷",
-  "costa rica": "🇨🇷",
-  "croatia": "🇭🇷",
-  "dinamarca": "🇩🇰",
-  "denmark": "🇩🇰",
-  "egypt": "🇪🇬",
+  "cabo verde": "🇨🇻",
+  "canada": "🇨🇦",
+  "colombia": "🇨🇴",
+  "coreia do sul": "🇰🇷",
+  "costa do marfim": "🇨🇮",
+  "rd congo": "🇨🇩",
+  "croacia": "🇭🇷",
+  "equador": "🇪🇨",
+  "catar": "🇶🇦",
+  "curacao": "🇨🇼",
   "egito": "🇪🇬",
-  "england": "🏴",
+  "escocia": "🏴",
   "espanha": "🇪🇸",
+  "estados unidos": "🇺🇸",
   "franca": "🇫🇷",
-  "france": "🇫🇷",
-  "iraq": "🇮🇶",
+  "gana": "🇬🇭",
+  "haiti": "🇭🇹",
+  "inglaterra": "🏴",
+  "ira": "🇮🇷",
   "iraque": "🇮🇶",
+  "japao": "🇯🇵",
   "jordania": "🇯🇴",
-  "jordan": "🇯🇴",
+  "marrocos": "🇲🇦",
   "mexico": "🇲🇽",
-  "morocco": "🇲🇦",
+  "nova zelandia": "🇳🇿",
+  "paises baixos": "🇳🇱",
   "noruega": "🇳🇴",
-  "norway": "🇳🇴",
+  "panama": "🇵🇦",
+  "paraguai": "🇵🇾",
   "portugal": "🇵🇹",
-  "qatar": "🇶🇦",
-  "saudi arabia": "🇸🇦",
+  "tchequia": "🇨🇿",
   "senegal": "🇸🇳",
-  "south africa": "🇿🇦",
+  "suecia": "🇸🇪",
+  "suica": "🇨🇭",
   "africa do sul": "🇿🇦",
+  "turquia": "🇹🇷",
   "tunisia": "🇹🇳",
+  "uzbequistao": "🇺🇿",
   "uruguai": "🇺🇾",
-  "uruguay": "🇺🇾",
 };
 
 function normalizeCountryName(value: string): string {
@@ -362,24 +377,27 @@ async function handleGames(bolaoId?: string): Promise<string> {
   const lines: string[] = [];
   for (const [dateLabel, items] of groups.entries()) {
     lines.push(`🗓️ *${dateLabel}*`);
+    lines.push("");
     lines.push(...items);
     lines.push("");
   }
 
-  const footer = hasMore
-    ? `\n... e mais ${upcoming.length - MAX_GAMES} jogos.\nConsulte o painel para ver todos.`
-    : "";
+  const footerLines = hasMore
+    ? ["", `... e mais ${upcoming.length - MAX_GAMES} jogos.`, "Consulte o painel para ver todos."]
+    : [];
 
   return [
     "📅 *Jogos liberados para palpitar (hoje + amanha)*",
     "",
     ...lines,
+    "",
     "Pra palpitar: *TIME A NxM TIME B*",
     "Pra corrigir erro: *alterar TIME A NxM TIME B*",
-    footer,
+    ...footerLines,
   ]
-    .filter((line) => line !== "")
-    .join("\n");
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 function normalizeGameId(value: unknown): string {
@@ -596,22 +614,19 @@ function handlePanel(participantId: string, bolaoId?: string): string {
 function handleGreeting(): string {
   return [
     "🎩👋 Salve meu camarada, sou o *Milton Barata*.",
-    "Com anos de larga experiencia em compliance e ouvidoria do jogo do bicho, ja fui caixeiro viajante e hoje assumo essa bodega.",
+    "Pra usar: envie o *numero* ou o *nome* do menu.",
     "",
-    "📡 Cuido do seu bolão no WhatsApp: registro palpite, atualizo ranking e trago o resumo da rodada.",
-    "",
-    "*Menu Premium (também funciona por número):*",
-    "🥇 1 ou ranking      -> classificação atual",
-    "📅 2 ou jogos        -> jogos liberados para palpitar (hoje + amanha)",
-    "🧾 3 ou resumo       -> resumo da última rodada vigente",
-    "🖥️ 4 ou painel       -> link do painel online",
-    "🛟 5 ou ajuda        -> guia de comandos",
-    "📊 7 ou relatorio    -> quem já palpitou hoje",
-    "🔁 0 ou trocar bolao -> trocar o bolão ativo",
+    "*Menu:*",
+    "🥇  *1* ou *ranking*",
+    "📅  *2* ou *jogos*",
+    "🧾  *3* ou *resumo*",
+    "🖥️  *4* ou *painel*",
+    "🛟  *5* ou *ajuda*",
+    "📊  *7* ou *relatorio*",
+    "🔁  *0* ou *trocar bolao*",
     "",
     "✍️ Para palpitar: *Mexico 2x1 Africa do Sul*",
     "🛠️ Para corrigir: *alterar Mexico 2x1 Africa do Sul*",
-    "🧠 Se quiser um chute meu, envie *sugestao*.",
   ].join("\n");
 }
 
@@ -619,15 +634,16 @@ function handleHelp(): string {
   return [
     "📘 *Ajuda Oficial - Milton Barata (BOTao da Copa 2026)*",
     "",
+    "Digite o *numero* ou o *nome* do comando.",
+    "",
     "*Comandos:*",
-    "🥇 1 ou ranking      -> ver classificação",
-    "📅 2 ou jogos        -> ver jogos liberados para palpitar (hoje + amanha)",
-    "🧾 3 ou resumo       -> resumo da rodada vigente",
-    "🖥️ 4 ou painel       -> abrir painel web",
-    "🛟 5 ou ajuda        -> voltar neste guia",
-    "📊 7 ou relatorio    -> relatório diário de palpites",
-    "🔁 0 ou trocar bolao -> selecionar outro bolão",
-    "🧠 sugestao          -> pitaco rápido do bot",
+    "🥇  *1* ou *ranking*   -> classificação",
+    "📅  *2* ou *jogos*     -> jogos liberados",
+    "🧾  *3* ou *resumo*    -> resumo da rodada",
+    "🖥️  *4* ou *painel*    -> painel web",
+    "🛟  *5* ou *ajuda*     -> ajuda",
+    "📊  *7* ou *relatorio* -> palpites do dia",
+    "🔁  *0* ou *trocar bolao* -> trocar bolão",
     "",
     "*Para registrar palpite:*",
     "Use: *TIME A NxM TIME B*",
